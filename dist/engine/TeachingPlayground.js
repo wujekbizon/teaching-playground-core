@@ -1,17 +1,15 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const RealTimeCommunicationSystem_1 = require("../systems/comms/RealTimeCommunicationSystem");
-const DataManagementSystem_1 = require("../systems/data/DataManagementSystem");
-const EventManagementSystem_1 = require("../systems/event/EventManagementSystem");
-const RoomManagementSystem_1 = require("../systems/room/RoomManagementSystem");
-const interfaces_1 = require("../interfaces");
-class TeachingPlayground {
+import { RealTimeCommunicationSystem } from '../systems/comms/RealTimeCommunicationSystem';
+import { DataManagementSystem } from '../systems/data/DataManagementSystem';
+import { EventManagementSystem } from '../systems/event/EventManagementSystem';
+import { RoomManagementSystem } from '../systems/room/RoomManagementSystem';
+import { SystemError } from '../interfaces';
+export default class TeachingPlayground {
     constructor(config) {
         this.currentUser = null;
-        this.roomSystem = new RoomManagementSystem_1.RoomManagementSystem(config.roomConfig);
-        this.commsSystem = new RealTimeCommunicationSystem_1.RealTimeCommunicationSystem(config.commsConfig);
-        this.eventSystem = new EventManagementSystem_1.EventManagementSystem(config.eventConfig);
-        this.dataSystem = new DataManagementSystem_1.DataManagementSystem(config.dataConfig);
+        this.roomSystem = new RoomManagementSystem(config.roomConfig);
+        this.commsSystem = new RealTimeCommunicationSystem(config.commsConfig);
+        this.eventSystem = new EventManagementSystem(config.eventConfig);
+        this.dataSystem = new DataManagementSystem(config.dataConfig);
         console.log('Teaching Playground initialized with all systems.');
     }
     // Room Management
@@ -26,10 +24,10 @@ class TeachingPlayground {
     }
     ensureUserAuthorized(requiredRole) {
         if (!this.currentUser) {
-            throw new interfaces_1.SystemError('UNAUTHORIZED', 'No user logged in');
+            throw new SystemError('UNAUTHORIZED', 'No user logged in');
         }
         if (this.currentUser.role !== requiredRole && this.currentUser.role !== 'admin') {
-            throw new interfaces_1.SystemError('FORBIDDEN', `Only ${requiredRole}s can perform this action`);
+            throw new SystemError('FORBIDDEN', `Only ${requiredRole}s can perform this action`);
         }
     }
     // Enhanced Event Management
@@ -53,7 +51,7 @@ class TeachingPlayground {
             return event;
         }
         catch (error) {
-            throw new interfaces_1.SystemError('LECTURE_SCHEDULING_FAILED', 'Failed to schedule lecture', error);
+            throw new SystemError('LECTURE_SCHEDULING_FAILED', 'Failed to schedule lecture', error);
         }
     }
     async getTeacherLectures(options) {
@@ -66,7 +64,7 @@ class TeachingPlayground {
             });
         }
         catch (error) {
-            throw new interfaces_1.SystemError('LECTURE_LIST_FAILED', 'Failed to fetch teacher lectures', error);
+            throw new SystemError('LECTURE_LIST_FAILED', 'Failed to fetch teacher lectures', error);
         }
     }
     async updateLecture(lectureId, updates) {
@@ -75,12 +73,12 @@ class TeachingPlayground {
             // Verify lecture ownership
             const lecture = await this.eventSystem.getEvent(lectureId);
             if (lecture.teacherId !== this.currentUser.id) {
-                throw new interfaces_1.SystemError('FORBIDDEN', 'You can only update your own lectures');
+                throw new SystemError('FORBIDDEN', 'You can only update your own lectures');
             }
             return await this.eventSystem.updateEvent(lectureId, updates);
         }
         catch (error) {
-            throw new interfaces_1.SystemError('LECTURE_UPDATE_FAILED', 'Failed to update lecture', error);
+            throw new SystemError('LECTURE_UPDATE_FAILED', 'Failed to update lecture', error);
         }
     }
     async cancelLecture(lectureId, reason) {
@@ -89,7 +87,7 @@ class TeachingPlayground {
             // Verify lecture ownership
             const lecture = await this.eventSystem.getEvent(lectureId);
             if (lecture.teacherId !== this.currentUser.id) {
-                throw new interfaces_1.SystemError('FORBIDDEN', 'You can only cancel your own lectures');
+                throw new SystemError('FORBIDDEN', 'You can only cancel your own lectures');
             }
             await this.eventSystem.cancelEvent(lectureId);
             await this.commsSystem.deallocateResources(lectureId);
@@ -100,7 +98,7 @@ class TeachingPlayground {
             });
         }
         catch (error) {
-            throw new interfaces_1.SystemError('LECTURE_CANCELLATION_FAILED', 'Failed to cancel lecture', error);
+            throw new SystemError('LECTURE_CANCELLATION_FAILED', 'Failed to cancel lecture', error);
         }
     }
     async listLectures(roomId) {
@@ -117,7 +115,7 @@ class TeachingPlayground {
         }
         catch (error) {
             console.error('Failed to list lectures:', error);
-            throw new interfaces_1.SystemError('LECTURE_LIST_FAILED', 'Failed to fetch lectures');
+            throw new SystemError('LECTURE_LIST_FAILED', 'Failed to fetch lectures');
         }
     }
     async getLectureDetails(lectureId) {
@@ -133,7 +131,7 @@ class TeachingPlayground {
         }
         catch (error) {
             console.error('Failed to get lecture details:', error);
-            throw new interfaces_1.SystemError('LECTURE_DETAILS_FAILED', 'Failed to fetch lecture details');
+            throw new SystemError('LECTURE_DETAILS_FAILED', 'Failed to fetch lecture details');
         }
     }
     // Communication
@@ -170,4 +168,3 @@ class TeachingPlayground {
         console.log('Reinitializing with new config');
     }
 }
-exports.default = TeachingPlayground;

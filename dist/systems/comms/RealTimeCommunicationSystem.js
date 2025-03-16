@@ -1,8 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.RealTimeCommunicationSystem = void 0;
-const interfaces_1 = require("../../interfaces");
-class RealTimeCommunicationSystem {
+import { SystemError } from '../../interfaces';
+export class RealTimeCommunicationSystem {
     constructor(config) {
         this.config = config;
     }
@@ -14,7 +11,7 @@ class RealTimeCommunicationSystem {
             console.log(`Communication setup for room: ${roomId}`);
         }
         catch (error) {
-            throw new interfaces_1.SystemError('COMMUNICATION_SETUP_FAILED', 'Failed to setup room communication');
+            throw new SystemError('COMMUNICATION_SETUP_FAILED', 'Failed to setup room communication');
         }
     }
     allocateResources(eventId) {
@@ -25,7 +22,7 @@ class RealTimeCommunicationSystem {
             console.log(`Resources allocated for event: ${eventId}`);
         }
         catch (error) {
-            throw new interfaces_1.SystemError('RESOURCE_ALLOCATION_FAILED', 'Failed to allocate resources');
+            throw new SystemError('RESOURCE_ALLOCATION_FAILED', 'Failed to allocate resources');
         }
     }
     async deallocateResources(eventId) {
@@ -36,7 +33,7 @@ class RealTimeCommunicationSystem {
             console.log(`Resources deallocated for event: ${eventId}`);
         }
         catch (error) {
-            throw new interfaces_1.SystemError('RESOURCE_DEALLOCATION_FAILED', 'Failed to deallocate resources');
+            throw new SystemError('RESOURCE_DEALLOCATION_FAILED', 'Failed to deallocate resources');
         }
     }
     async getResourceStatus(eventId) {
@@ -52,8 +49,7 @@ class RealTimeCommunicationSystem {
             };
         }
         catch (error) {
-            throw new interfaces_1.SystemError('RESOURCE_STATUS_FAILED', 'Failed to get resource status');
+            throw new SystemError('RESOURCE_STATUS_FAILED', 'Failed to get resource status');
         }
     }
 }
-exports.RealTimeCommunicationSystem = RealTimeCommunicationSystem;

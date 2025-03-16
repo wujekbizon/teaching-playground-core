@@ -1,8 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.DataManagementSystem = void 0;
-const interfaces_1 = require("../../interfaces");
-class DataManagementSystem {
+import { SystemError } from '../../interfaces';
+export class DataManagementSystem {
     constructor(config) {
         this.config = config;
     }
@@ -15,7 +12,7 @@ class DataManagementSystem {
             console.log(`Saving data: ${key} = ${JSON.stringify(value)}`);
         }
         catch (error) {
-            throw new interfaces_1.SystemError('DATA_SAVE_FAILED', `Failed to save data for key: ${key}`);
+            throw new SystemError('DATA_SAVE_FAILED', `Failed to save data for key: ${key}`);
         }
     }
     async fetchData(key) {
@@ -28,7 +25,7 @@ class DataManagementSystem {
             return null;
         }
         catch (error) {
-            throw new interfaces_1.SystemError('DATA_FETCH_FAILED', `Failed to fetch data for key: ${key}`);
+            throw new SystemError('DATA_FETCH_FAILED', `Failed to fetch data for key: ${key}`);
         }
     }
     async deleteEventData(eventId) {
@@ -40,7 +37,7 @@ class DataManagementSystem {
             console.log(`Deleting data for event: ${eventId}`);
         }
         catch (error) {
-            throw new interfaces_1.SystemError('DATA_DELETE_FAILED', `Failed to delete data for event: ${eventId}`);
+            throw new SystemError('DATA_DELETE_FAILED', `Failed to delete data for event: ${eventId}`);
         }
     }
     async backupData() {
@@ -51,7 +48,7 @@ class DataManagementSystem {
             console.log('Creating data backup');
         }
         catch (error) {
-            throw new interfaces_1.SystemError('DATA_BACKUP_FAILED', 'Failed to create data backup');
+            throw new SystemError('DATA_BACKUP_FAILED', 'Failed to create data backup');
         }
     }
     async restoreData(backupId) {
@@ -62,7 +59,7 @@ class DataManagementSystem {
             console.log(`Restoring data from backup: ${backupId}`);
         }
         catch (error) {
-            throw new interfaces_1.SystemError('DATA_RESTORE_FAILED', `Failed to restore from backup: ${backupId}`);
+            throw new SystemError('DATA_RESTORE_FAILED', `Failed to restore from backup: ${backupId}`);
         }
     }
     async getDataStats() {
@@ -75,8 +72,7 @@ class DataManagementSystem {
             };
         }
         catch (error) {
-            throw new interfaces_1.SystemError('DATA_STATS_FAILED', 'Failed to fetch data statistics');
+            throw new SystemError('DATA_STATS_FAILED', 'Failed to fetch data statistics');
         }
     }
 }
-exports.DataManagementSystem = DataManagementSystem;

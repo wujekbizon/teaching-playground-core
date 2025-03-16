@@ -1,8 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.RoomManagementSystem = void 0;
-const interfaces_1 = require("../../interfaces");
-class RoomManagementSystem {
+import { SystemError } from '../../interfaces';
+export class RoomManagementSystem {
     constructor(config) {
         this.config = config;
     }
@@ -12,7 +9,7 @@ class RoomManagementSystem {
             return { id: `room_${Date.now()}`, ...options };
         }
         catch (error) {
-            throw new interfaces_1.SystemError('ROOM_CREATION_FAILED', 'Failed to create room');
+            throw new SystemError('ROOM_CREATION_FAILED', 'Failed to create room');
         }
     }
     async getRoomParticipants(roomId) {
@@ -32,8 +29,7 @@ class RoomManagementSystem {
             ];
         }
         catch (error) {
-            throw new interfaces_1.SystemError('ROOM_PARTICIPANTS_FAILED', 'Failed to get room participants');
+            throw new SystemError('ROOM_PARTICIPANTS_FAILED', 'Failed to get room participants');
         }
     }
 }
-exports.RoomManagementSystem = RoomManagementSystem;

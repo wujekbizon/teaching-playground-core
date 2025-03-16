@@ -1,20 +1,14 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.JsonDatabase = void 0;
-const promises_1 = require("node:fs/promises");
-const path_1 = __importDefault(require("path"));
-const interfaces_1 = require("../interfaces");
-class JsonDatabase {
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'path';
+import { SystemError } from '../interfaces';
+export class JsonDatabase {
     constructor(filename = 'test-data.json') {
-        this.dbPath = path_1.default.join(process.cwd(), 'data', filename);
+        this.dbPath = path.join(process.cwd(), 'data', filename);
         this.data = null;
     }
     async load() {
         try {
-            const content = await (0, promises_1.readFile)(this.dbPath, 'utf-8');
+            const content = await readFile(this.dbPath, 'utf-8');
             this.data = JSON.parse(content);
         }
         catch (error) {
@@ -23,7 +17,7 @@ class JsonDatabase {
                 await this.save();
             }
             else {
-                throw new interfaces_1.SystemError('DATABASE_READ_ERROR', 'Failed to read database');
+                throw new SystemError('DATABASE_READ_ERROR', 'Failed to read database');
             }
         }
     }
@@ -32,11 +26,11 @@ class JsonDatabase {
             if (!this.data) {
                 await this.load();
             }
-            await (0, promises_1.writeFile)(this.dbPath, JSON.stringify(this.data, null, 2), 'utf-8');
+            await writeFile(this.dbPath, JSON.stringify(this.data, null, 2), 'utf-8');
         }
         catch (error) {
             console.error('Save error:', error);
-            throw new interfaces_1.SystemError('DATABASE_WRITE_ERROR', 'Failed to write to database');
+            throw new SystemError('DATABASE_WRITE_ERROR', 'Failed to write to database');
         }
     }
     async find(collection, query = {}) {
@@ -75,4 +69,3 @@ class JsonDatabase {
         return initialLength !== this.data[collection].length;
     }
 }
-exports.JsonDatabase = JsonDatabase;
