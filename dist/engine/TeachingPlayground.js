@@ -10,11 +10,31 @@ export default class TeachingPlayground {
         this.commsSystem = new RealTimeCommunicationSystem(config.commsConfig);
         this.eventSystem = new EventManagementSystem(config.eventConfig);
         this.dataSystem = new DataManagementSystem(config.dataConfig);
+        // Create a test room for development
+        if (process.env.NODE_ENV === 'development') {
+            this.roomSystem.createTestRoom()
+                .then(room => {
+                console.log('Test room created:', room.id);
+            })
+                .catch(error => {
+                console.error('Failed to create test room:', error);
+            });
+        }
         console.log('Teaching Playground initialized with all systems.');
     }
     // Room Management
     async createClassroom(options) {
-        const room = await this.roomSystem.createRoom(options);
+        const room = await this.roomSystem.createRoom({
+            name: options.name,
+            capacity: options.capacity,
+            features: options.features || {
+                hasVideo: true,
+                hasAudio: true,
+                hasChat: true,
+                hasWhiteboard: false,
+                hasScreenShare: true,
+            },
+        });
         this.commsSystem.setupForRoom(room.id);
         return room;
     }
@@ -22,23 +42,23 @@ export default class TeachingPlayground {
     setCurrentUser(user) {
         this.currentUser = user;
     }
-    ensureUserAuthorized(requiredRole) {
-        if (!this.currentUser) {
-            throw new SystemError('UNAUTHORIZED', 'No user logged in');
+    async ensureUserAuthorized(user, action) {
+        if (!user) {
+            throw new SystemError('UNAUTHORIZED', 'No user provided');
         }
-        if (this.currentUser.role !== requiredRole && this.currentUser.role !== 'admin') {
-            throw new SystemError('FORBIDDEN', `Only ${requiredRole}s can perform this action`);
+        if (user.role !== 'teacher' && user.role !== 'admin') {
+            throw new SystemError('UNAUTHORIZED', `User ${user.username} is not authorized to ${action}. Required role: teacher or admin`);
         }
     }
     // Enhanced Event Management
     async scheduleLecture(options) {
         try {
-            this.ensureUserAuthorized('teacher');
+            this.ensureUserAuthorized(this.currentUser, 'schedule a lecture');
             // Create the event with teacher information
             const event = await this.eventSystem.createEvent({
                 ...options,
                 teacherId: this.currentUser.id,
-                createdBy: this.currentUser.name,
+                createdBy: this.currentUser.username,
             });
             // Setup communication resources
             await this.commsSystem.allocateResources(event.id);
@@ -56,7 +76,7 @@ export default class TeachingPlayground {
     }
     async getTeacherLectures(options) {
         try {
-            this.ensureUserAuthorized('teacher');
+            this.ensureUserAuthorized(this.currentUser, 'fetch teacher lectures');
             return await this.eventSystem.listEvents({
                 type: 'lecture',
                 teacherId: this.currentUser.id,
@@ -69,7 +89,7 @@ export default class TeachingPlayground {
     }
     async updateLecture(lectureId, updates) {
         try {
-            this.ensureUserAuthorized('teacher');
+            this.ensureUserAuthorized(this.currentUser, 'update a lecture');
             // Verify lecture ownership
             const lecture = await this.eventSystem.getEvent(lectureId);
             if (lecture.teacherId !== this.currentUser.id) {
@@ -83,7 +103,7 @@ export default class TeachingPlayground {
     }
     async cancelLecture(lectureId, reason) {
         try {
-            this.ensureUserAuthorized('teacher');
+            this.ensureUserAuthorized(this.currentUser, 'cancel a lecture');
             // Verify lecture ownership
             const lecture = await this.eventSystem.getEvent(lectureId);
             if (lecture.teacherId !== this.currentUser.id) {
@@ -122,7 +142,12 @@ export default class TeachingPlayground {
         try {
             const lecture = await this.eventSystem.getEvent(lectureId);
             const commsStatus = await this.commsSystem.getResourceStatus(lectureId);
-            const participants = [...(await this.roomSystem.getRoomParticipants(lecture.roomId))];
+            const participants = (await this.roomSystem.getRoomParticipants(lecture.roomId))
+                .map(p => ({
+                id: p.id,
+                role: p.role === 'admin' ? 'teacher' : p.role,
+                status: p.status === 'away' ? 'offline' : p.status
+            }));
             return {
                 ...lecture,
                 communicationStatus: commsStatus,

@@ -1,8 +1,10 @@
 import { TeachingPlaygroundConfig } from '../interfaces/teaching-playground.interface';
+import { RoomManagementSystem } from '../systems/room/RoomManagementSystem';
 import { Lecture } from '../interfaces/event.interface';
 import { User } from '../interfaces/user.interface';
+import { RoomFeatures } from '../interfaces/room.interface';
 export default class TeachingPlayground {
-    private roomSystem;
+    roomSystem: RoomManagementSystem;
     private commsSystem;
     private eventSystem;
     private dataSystem;
@@ -10,11 +12,9 @@ export default class TeachingPlayground {
     constructor(config: TeachingPlaygroundConfig);
     createClassroom(options: {
         name: string;
-        [key: string]: any;
-    }): Promise<{
-        name: string;
-        id: string;
-    }>;
+        capacity: number;
+        features?: Partial<RoomFeatures>;
+    }): Promise<import("../interfaces").Room>;
     setCurrentUser(user: User): void;
     private ensureUserAuthorized;
     scheduleLecture(options: {
