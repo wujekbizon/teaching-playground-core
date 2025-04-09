@@ -19,6 +19,8 @@ export declare class RoomManagementSystem {
     getRoomParticipants(roomId: string): Promise<RoomParticipant[]>;
     addParticipant(roomId: string, user: User): Promise<RoomParticipant>;
     removeParticipant(roomId: string, userId: string): Promise<void>;
+    updateParticipantStreamingStatus(roomId: string, userId: string, isStreaming: boolean): Promise<Room>;
+    clearParticipants(roomId: string): Promise<void>;
     getRoomState(roomId: string): Promise<RoomState>;
     createTestRoom(): Promise<Room>;
     getAvailableRooms(): Promise<Room[]>;

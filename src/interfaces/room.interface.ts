@@ -40,6 +40,7 @@ export interface RoomParticipant extends User {
   canChat: boolean
   canScreenShare: boolean
   username: string
+  isStreaming?: boolean
 }
 
 export interface Room {

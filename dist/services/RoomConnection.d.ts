@@ -12,22 +12,37 @@ interface StreamState {
     quality: 'low' | 'medium' | 'high';
 }
 export declare class RoomConnection extends EventEmitter {
-    private socket;
     private roomId;
     private user;
-    private connected;
+    private serverUrl;
+    private socket;
+    private webrtc;
+    private isConnected;
+    private connectedPeers;
     private messageHistory;
     private currentStream;
+    private reconnectAttempts;
+    private maxReconnectAttempts;
+    private reconnectDelay;
+    private shouldReconnect;
+    private rooms;
+    private streams;
+    private messages;
     constructor(roomId: string, user: User, serverUrl: string);
-    private setupSocketListeners;
-    private joinRoom;
+    private setupWebRTCEvents;
     connect(): void;
+    private setupSocketListeners;
+    private handleReconnect;
+    private joinRoom;
     disconnect(): void;
-    sendMessage(content: string): boolean;
-    startStream(quality?: StreamState['quality']): boolean;
-    stopStream(): boolean;
+    startStream(stream: MediaStream, quality?: StreamState['quality']): Promise<boolean>;
+    stopStream(): void;
+    sendMessage(content: string): void;
     getMessageHistory(): RoomMessage[];
     getCurrentStream(): StreamState | null;
-    isConnected(): boolean;
+    getConnectionStatus(): boolean;
+    private handleOffer;
+    private handleAnswer;
+    private handleIceCandidate;
 }
 export {};

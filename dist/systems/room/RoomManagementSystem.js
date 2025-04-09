@@ -4,8 +4,10 @@ import { RealTimeCommunicationSystem } from '../comms/RealTimeCommunicationSyste
 export class RoomManagementSystem {
     constructor(config) {
         this.config = config;
-        this.db = new JsonDatabase();
+        // Use singleton instance of JsonDatabase
+        this.db = JsonDatabase.getInstance();
         this.commsSystem = new RealTimeCommunicationSystem();
+        console.log('RoomManagementSystem initialized with singleton database instance');
     }
     async createRoom(options) {
         try {
@@ -141,7 +143,14 @@ export class RoomManagementSystem {
     }
     async addParticipant(roomId, user) {
         try {
+            console.log(`Adding participant ${user.username} (${user.id}) to room ${roomId}`);
             const room = await this.getRoom(roomId);
+            // Check if user is already in the room
+            const existingParticipant = room.participants.find(p => p.id === user.id);
+            if (existingParticipant) {
+                console.log(`User ${user.username} is already in room ${roomId}`);
+                return existingParticipant;
+            }
             if (room.participants.length >= room.capacity) {
                 throw new SystemError('ROOM_FULL', 'Room has reached maximum capacity');
             }
@@ -152,22 +161,97 @@ export class RoomManagementSystem {
                 canChat: true,
                 canScreenShare: user.role === 'teacher',
             };
-            room.participants.push(participant);
-            await this.updateRoom(roomId, { participants: room.participants });
+            // Create a new array with all existing participants plus the new one
+            const updatedParticipants = [...room.participants, participant];
+            // Update the room in the database with the new participants array
+            const updatedRoom = await this.db.update('rooms', { id: roomId }, {
+                participants: updatedParticipants,
+                updatedAt: new Date().toISOString()
+            });
+            if (!updatedRoom) {
+                throw new SystemError('PARTICIPANT_ADD_FAILED', 'Failed to update room with new participant');
+            }
+            console.log(`Successfully added ${user.username} to room ${roomId}. Total participants: ${updatedParticipants.length}`);
+            console.log(`Participants in room: ${updatedParticipants.map(p => p.username).join(', ')}`);
             return participant;
         }
         catch (error) {
+            console.error(`Failed to add participant ${user.username} to room ${roomId}:`, error);
             throw new SystemError('PARTICIPANT_ADD_FAILED', 'Failed to add participant', error);
         }
     }
     async removeParticipant(roomId, userId) {
         try {
+            console.log(`Removing participant ${userId} from room ${roomId}`);
             const room = await this.getRoom(roomId);
-            room.participants = room.participants.filter(p => p.id !== userId);
-            await this.updateRoom(roomId, { participants: room.participants });
+            // Check if user is in the room
+            const participantIndex = room.participants.findIndex(p => p.id === userId);
+            if (participantIndex === -1) {
+                console.log(`User ${userId} is not in room ${roomId}, nothing to remove`);
+                return;
+            }
+            const username = room.participants[participantIndex].username;
+            // Create a new array without the participant to remove
+            const updatedParticipants = room.participants.filter(p => p.id !== userId);
+            // Save updated participants list
+            const updatedRoom = await this.db.update('rooms', { id: roomId }, {
+                participants: updatedParticipants,
+                updatedAt: new Date().toISOString()
+            });
+            if (!updatedRoom) {
+                throw new SystemError('PARTICIPANT_REMOVE_FAILED', 'Failed to update room after removing participant');
+            }
+            console.log(`Successfully removed ${username} (${userId}) from room ${roomId}. Remaining participants: ${updatedParticipants.length}`);
+            console.log(`Participants in room: ${updatedParticipants.map(p => p.username).join(', ')}`);
         }
         catch (error) {
+            console.error(`Failed to remove participant ${userId} from room ${roomId}:`, error);
             throw new SystemError('PARTICIPANT_REMOVE_FAILED', 'Failed to remove participant', error);
+        }
+    }
+    async updateParticipantStreamingStatus(roomId, userId, isStreaming) {
+        try {
+            console.log(`Updating streaming status for ${userId} in room ${roomId}: ${isStreaming ? 'streaming' : 'not streaming'}`);
+            const room = await this.getRoom(roomId);
+            // Create a new array with updated participant streaming status
+            const updatedParticipants = room.participants.map(p => {
+                if (p.id === userId) {
+                    return { ...p, isStreaming: isStreaming };
+                }
+                return p;
+            });
+            // Save updated participants list
+            const updatedRoom = await this.db.update('rooms', { id: roomId }, {
+                participants: updatedParticipants,
+                updatedAt: new Date().toISOString()
+            });
+            if (!updatedRoom) {
+                throw new SystemError('PARTICIPANT_UPDATE_FAILED', 'Failed to update participant streaming status');
+            }
+            console.log(`Successfully updated streaming status for ${userId} in room ${roomId}`);
+            return updatedRoom;
+        }
+        catch (error) {
+            console.error(`Failed to update streaming status for ${userId} in room ${roomId}:`, error);
+            throw new SystemError('PARTICIPANT_UPDATE_FAILED', 'Failed to update participant streaming status', error);
+        }
+    }
+    async clearParticipants(roomId) {
+        try {
+            console.log(`Clearing all participants from room ${roomId}`);
+            // Save updated participants list
+            const updatedRoom = await this.db.update('rooms', { id: roomId }, {
+                participants: [],
+                updatedAt: new Date().toISOString()
+            });
+            if (!updatedRoom) {
+                throw new SystemError('PARTICIPANTS_CLEAR_FAILED', 'Failed to clear participants from room');
+            }
+            console.log(`Successfully cleared all participants from room ${roomId}`);
+        }
+        catch (error) {
+            console.error(`Failed to clear participants from room ${roomId}:`, error);
+            throw new SystemError('PARTICIPANTS_CLEAR_FAILED', 'Failed to clear participants', error);
         }
     }
     async getRoomState(roomId) {

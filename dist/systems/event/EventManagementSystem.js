@@ -4,7 +4,8 @@ import { JsonDatabase } from '../../utils/JsonDatabase';
 export class EventManagementSystem {
     constructor(config) {
         this.config = config;
-        this.db = new JsonDatabase();
+        // Use singleton instance of JsonDatabase
+        this.db = JsonDatabase.getInstance();
     }
     async createEvent(options) {
         try {
@@ -15,6 +16,7 @@ export class EventManagementSystem {
                 console.error('Validation error:', validationResult.error.flatten());
                 throw new SystemError('EVENT_VALIDATION_FAILED', 'Invalid lecture data', validationResult.error.flatten());
             }
+            // Create the lecture event
             const event = {
                 id: `lecture_${Date.now()}`,
                 name: validationResult.data.name,
@@ -29,7 +31,27 @@ export class EventManagementSystem {
             };
             // Log the event before insertion
             console.log('Event to be inserted:', event);
+            // Save the event to the database
             await this.db.insert('events', event);
+            // Update the room to associate it with this lecture
+            const room = await this.db.findOne('rooms', { id: event.roomId });
+            if (room) {
+                // Update the room with the current lecture info
+                await this.db.update('rooms', { id: event.roomId }, {
+                    currentLecture: {
+                        id: event.id,
+                        name: event.name,
+                        teacherId: event.teacherId,
+                        status: event.status
+                    },
+                    status: 'scheduled',
+                    updatedAt: new Date().toISOString()
+                });
+                console.log(`Room ${event.roomId} updated with lecture ${event.id}`);
+            }
+            else {
+                console.warn(`Room ${event.roomId} not found, unable to associate with lecture`);
+            }
             return event;
         }
         catch (error) {
@@ -42,9 +64,20 @@ export class EventManagementSystem {
     }
     async cancelEvent(eventId) {
         try {
+            const event = await this.getEvent(eventId);
             const updated = await this.db.update('events', { id: eventId }, { status: 'cancelled' });
             if (!updated) {
                 throw new SystemError('EVENT_NOT_FOUND', `Event ${eventId} not found`);
+            }
+            // Update the room if this lecture was associated with it
+            const room = await this.db.findOne('rooms', { id: event.roomId });
+            if (room && room.currentLecture?.id === eventId) {
+                await this.db.update('rooms', { id: event.roomId }, {
+                    status: 'available',
+                    currentLecture: undefined,
+                    updatedAt: new Date().toISOString()
+                });
+                console.log(`Room ${event.roomId} status updated after lecture cancellation`);
             }
         }
         catch (error) {
@@ -121,6 +154,26 @@ export class EventManagementSystem {
             const updated = await this.db.update('events', { id: eventId }, updates);
             if (!updated) {
                 throw new SystemError('EVENT_UPDATE_FAILED', 'Failed to update event status');
+            }
+            // Update the room status based on the lecture status
+            const room = await this.db.findOne('rooms', { id: event.roomId });
+            if (room && room.currentLecture?.id === eventId) {
+                let roomStatus = room.status;
+                if (newStatus === 'in-progress') {
+                    roomStatus = 'occupied';
+                }
+                else if (newStatus === 'completed' || newStatus === 'cancelled') {
+                    roomStatus = 'available';
+                }
+                // Update room status and lecture reference
+                await this.db.update('rooms', { id: event.roomId }, {
+                    status: roomStatus,
+                    currentLecture: newStatus === 'completed' || newStatus === 'cancelled'
+                        ? undefined
+                        : { ...room.currentLecture, status: newStatus },
+                    updatedAt: new Date().toISOString()
+                });
+                console.log(`Room ${event.roomId} status updated to ${roomStatus} after lecture status change to ${newStatus}`);
             }
             return updated;
         }

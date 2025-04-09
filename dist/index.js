@@ -7,7 +7,7 @@ export * from './interfaces/errors.interface';
 export * from './interfaces/teaching-playground.interface';
 export * from './interfaces/user.interface';
 export * from './interfaces/schema';
-export * from './client/RoomConnection';
+export { RoomConnection } from './services/RoomConnection';
 export * from './systems/comms/RealTimeCommunicationSystem';
 // Export systems
 export * from './systems/event/EventManagementSystem';

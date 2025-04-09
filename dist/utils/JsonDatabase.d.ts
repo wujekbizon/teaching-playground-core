@@ -1,7 +1,14 @@
 export declare class JsonDatabase {
     private dbPath;
     private data;
+    private isServer;
+    private apiBaseUrl;
+    private isSyncingToFile;
     constructor(filename?: string);
+    static getInstance(filename?: string): JsonDatabase;
+    private getInitialData;
+    private ensureDataDirectory;
+    private syncToFile;
     private load;
     private save;
     find(collection: string, query?: Record<string, any>): Promise<any>;
