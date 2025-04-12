@@ -49,7 +49,7 @@ export interface Room {
         name: string;
         teacherId: string;
         status: Lecture['status'];
-    };
+    } | null;
     createdAt: string;
     updatedAt: string;
 }
