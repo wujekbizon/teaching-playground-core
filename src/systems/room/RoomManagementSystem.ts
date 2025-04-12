@@ -105,7 +105,7 @@ export class RoomManagementSystem {
       // Clear the current lecture and reset room status
       const updatedRoom = await this.updateRoom(roomId, {
         status: 'available',
-        currentLecture: undefined,
+        currentLecture: null,
         participants: [] // Clear participants when lecture ends
       })
 
@@ -210,14 +210,14 @@ export class RoomManagementSystem {
       console.log(`Removing participant ${userId} from room ${roomId}`)
       const room = await this.getRoom(roomId)
       
-      // Check if user is in the room
-      const participantIndex = room.participants.findIndex(p => p.id === userId)
-      if (participantIndex === -1) {
+      // Find the participant to remove
+      const participant = room.participants.find(p => p.id === userId)
+      if (!participant) {
         console.log(`User ${userId} is not in room ${roomId}, nothing to remove`)
         return
       }
       
-      const username = room.participants[participantIndex].username
+      const username = participant.username
       
       // Create a new array without the participant to remove
       const updatedParticipants = room.participants.filter(p => p.id !== userId)
@@ -297,17 +297,22 @@ export class RoomManagementSystem {
       const room = await this.getRoom(roomId)
       const commsStatus = room.currentLecture ? 
         await this.commsSystem.getResourceStatus(room.currentLecture.id) : 
-        null
+        undefined
 
-      return {
+      const state: RoomState = {
         isStreamActive: room.status === 'occupied',
         isChatActive: room.features.hasChat && room.status === 'occupied',
         activeFeatures: Object.entries(room.features)
           .filter(([_, enabled]) => enabled)
           .map(([feature]) => feature),
-        participantCount: room.participants.length,
-        communicationStatus: commsStatus || undefined
+        participantCount: room.participants.length
       }
+
+      if (commsStatus) {
+        state.communicationStatus = commsStatus
+      }
+
+      return state
     } catch (error) {
       throw new SystemError('ROOM_STATE_FETCH_FAILED', 'Failed to fetch room state', error)
     }
