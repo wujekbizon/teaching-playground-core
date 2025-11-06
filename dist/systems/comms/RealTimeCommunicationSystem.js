@@ -6,9 +6,9 @@ export class RealTimeCommunicationSystem extends EventEmitter {
         super();
         this.config = config;
         this.io = null;
-        this.rooms = new Map(); // roomId -> Set of connected socketIds
-        this.streams = new Map(); // roomId -> stream state
-        this.messages = new Map(); // roomId -> messages
+        this.rooms = new Map();
+        this.streams = new Map();
+        this.messages = new Map();
     }
     initialize(server) {
         this.io = new SocketIOServer(server, {
