@@ -18,9 +18,9 @@ interface StreamState {
 
 export class RealTimeCommunicationSystem extends EventEmitter {
   private io: SocketIOServer | null = null
-  private rooms: Map<string, Set<string>> = new Map() // roomId -> Set of connected socketIds
-  private streams: Map<string, StreamState> = new Map() // roomId -> stream state
-  private messages: Map<string, RoomMessage[]> = new Map() // roomId -> messages
+  private rooms: Map<string, Set<string>> = new Map()
+  private streams: Map<string, StreamState> = new Map()
+  private messages: Map<string, RoomMessage[]> = new Map()
 
   constructor(private config?: CommsConfig) {
     super()
@@ -46,6 +46,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     this.io.on('connection', (socket) => {
       console.log(`Client connected: ${socket.id}`)
 
+ 
       // Room events
       socket.on('join_room', (roomId: string, userId: string) => {
         this.handleJoinRoom(socket, roomId, userId)
@@ -83,6 +84,11 @@ export class RealTimeCommunicationSystem extends EventEmitter {
         this.rooms.set(roomId, new Set())
       }
       this.rooms.get(roomId)!.add(socket.id)
+
+      socket.emit('welcome', {
+        message: `Welcome to ${roomId}, ${userId}`,
+        timestamp: new Date().toISOString()
+      });
 
       // Send room state to the joining user
       socket.emit('room_state', {

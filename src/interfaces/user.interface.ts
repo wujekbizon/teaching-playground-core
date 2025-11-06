@@ -2,8 +2,8 @@ export interface User {
   id: string
   username: string
   role: 'teacher' | 'student' | 'admin'
-  email?: string
-  displayName?: string
+  email?: string | null
+  displayName?: string | null
   status: 'online' | 'offline' | 'away'
   metadata?: {
     lastActive: string

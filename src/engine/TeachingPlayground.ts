@@ -20,42 +20,32 @@ export default class TeachingPlayground {
     this.commsSystem = new RealTimeCommunicationSystem(config.commsConfig)
     this.eventSystem = new EventManagementSystem(config.eventConfig)
     this.dataSystem = new DataManagementSystem(config.dataConfig)
-
-    // Create a test room for development
-    if (process.env.NODE_ENV === 'development') {
-      this.roomSystem.createTestRoom()
-        .then(room => {
-          console.log('Test room created:', room.id)
-        })
-        .catch(error => {
-          console.error('Failed to create test room:', error)
-        })
-    }
-
-    console.log('Teaching Playground initialized with all systems.')
   }
 
-  // Room Management
-  async createClassroom(options: { name: string; capacity: number; features?: Partial<RoomFeatures> }) {
-    const room = await this.roomSystem.createRoom({
-      name: options.name,
-      capacity: options.capacity,
-      features: options.features || {
-        hasVideo: true,
-        hasAudio: true,
-        hasChat: true,
-        hasWhiteboard: false,
-        hasScreenShare: true,
-      },
-    })
-    this.commsSystem.setupForRoom(room.id)
-    return room
-  }
-
-  // User Management
-  setCurrentUser(user: User): void {
+  setCurrentUser(user: User | null): void {
     this.currentUser = user
   }
+
+  getCurrentUser(): User | null {
+    return this.currentUser
+  }
+
+    // Room Management
+    async createClassroom(options: { name: string; capacity: number; features?: Partial<RoomFeatures> }) {
+      const room = await this.roomSystem.createRoom({
+        name: options.name,
+        capacity: options.capacity,
+        features: options.features || {
+          hasVideo: true,
+          hasAudio: true,
+          hasChat: true,
+          hasWhiteboard: false,
+          hasScreenShare: true,
+        },
+      })
+      this.commsSystem.setupForRoom(room.id)
+      return room
+    }
 
   private async ensureUserAuthorized(user: User | null, action: string) {
     if (!user) {

@@ -10,16 +10,6 @@ export default class TeachingPlayground {
         this.commsSystem = new RealTimeCommunicationSystem(config.commsConfig);
         this.eventSystem = new EventManagementSystem(config.eventConfig);
         this.dataSystem = new DataManagementSystem(config.dataConfig);
-        // Create a test room for development
-        if (process.env.NODE_ENV === 'development') {
-            this.roomSystem.createTestRoom()
-                .then(room => {
-                console.log('Test room created:', room.id);
-            })
-                .catch(error => {
-                console.error('Failed to create test room:', error);
-            });
-        }
         console.log('Teaching Playground initialized with all systems.');
     }
     // Room Management

@@ -2,11 +2,13 @@ import { RoomConfig } from '../../interfaces';
 import { Room, CreateRoomOptions, RoomState, RoomParticipant } from '../../interfaces/room.interface';
 import { User } from '../../interfaces/user.interface';
 import { Lecture } from '../../interfaces/event.interface';
+import { RealTimeCommunicationSystem } from '../comms/RealTimeCommunicationSystem';
 export declare class RoomManagementSystem {
     private config?;
     private db;
     private commsSystem;
     constructor(config?: RoomConfig | undefined);
+    getCommsSystem(): RealTimeCommunicationSystem;
     createRoom(options: CreateRoomOptions): Promise<Room>;
     assignLectureToRoom(roomId: string, lecture: Lecture): Promise<Room>;
     startLecture(roomId: string): Promise<Room>;

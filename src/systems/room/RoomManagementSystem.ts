@@ -16,6 +16,10 @@ export class RoomManagementSystem {
     console.log('RoomManagementSystem initialized with singleton database instance')
   }
 
+  public getCommsSystem(): RealTimeCommunicationSystem {
+    return this.commsSystem;
+  }
+
   async createRoom(options: CreateRoomOptions): Promise<Room> {
     try {
       const room: Room = {
@@ -196,6 +200,7 @@ export class RoomManagementSystem {
         throw new SystemError('PARTICIPANT_ADD_FAILED', 'Failed to update room with new participant')
       }
 
+      this.commsSystem.emit('user_joined', participant);
       console.log(`Successfully added ${user.username} to room ${roomId}. Total participants: ${updatedParticipants.length}`)
       console.log(`Participants in room: ${updatedParticipants.map(p => p.username).join(', ')}`)
       return participant
@@ -331,28 +336,7 @@ export class RoomManagementSystem {
         hasWhiteboard: true,
         hasScreenShare: true,
       },
-      participants: [
-        {
-          id: 'test-teacher',
-          username: 'Dr. Smith',
-          role: 'teacher',
-          status: 'online',
-          joinedAt: new Date().toISOString(),
-          canStream: true,
-          canChat: true,
-          canScreenShare: true,
-        },
-        {
-          id: 'test-student-1',
-          username: 'John Doe',
-          role: 'student',
-          status: 'online',
-          joinedAt: new Date().toISOString(),
-          canStream: false,
-          canChat: true,
-          canScreenShare: false,
-        },
-      ],
+      participants: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }

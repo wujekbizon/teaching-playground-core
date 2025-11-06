@@ -12,10 +12,10 @@ export async function startWebSocketServer(port = 3001) {
         });
         commsSystem.initialize(server);
         server.listen(port, () => {
-            console.log(`✨ WebSocket server is running on port ${port}`);
-            console.log(`🔗 HTTP endpoint: http://localhost:${port}`);
-            console.log(`🚀 WebSocket endpoint: ws://localhost:${port}`);
-            console.log('👥 Waiting for connections...');
+            console.log(`WebSocket server is running on port ${port}`);
+            console.log(`HTTP endpoint: http://localhost:${port}`);
+            console.log(`WebSocket endpoint: ws://localhost:${port}`);
+            console.log('Waiting for connections...');
         });
         // Handle graceful shutdown
         process.on('SIGTERM', () => {

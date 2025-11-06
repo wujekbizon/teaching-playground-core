@@ -127,6 +127,11 @@ export class RoomConnection extends EventEmitter {
       }
     })
 
+    // Add listener for 'welcome' event
+    this.socket.on('welcome', (data: { message: string, timestamp: string }) => {
+      this.emit('welcome', data) // Re-emit for useRoomConnection to pick up
+    })
+
     this.socket.on('room_state', (state: {
       stream: StreamState | null,
       messages: RoomMessage[],
@@ -135,7 +140,7 @@ export class RoomConnection extends EventEmitter {
       console.log('Received room state:', state)
       this.messageHistory = state.messages
       this.currentStream = state.stream
-      this.emit('room_state_updated', state)
+      this.emit('room_state', state)
     })
 
     this.socket.on('new_message', (message: RoomMessage) => {
@@ -221,16 +226,25 @@ export class RoomConnection extends EventEmitter {
   }
 
   disconnect() {
+    console.log('Initiating disconnect sequence')
     this.shouldReconnect = false
+    
+    // 1. Clean up WebRTC
+    this.webrtc.closeAllConnections()
+    console.log('WebRTC connections closed')
+
+    // 2. Disconnect socket
     if (this.socket) {
-      console.log('Disconnecting from room:', this.roomId)
-      this.socket.emit('leave_room', this.roomId)
+      console.log('Disconnecting socket')
+      this.socket.removeAllListeners() // Critical!
       this.socket.disconnect()
       this.socket = null
     }
-    this.webrtc.closeAllConnections()
+
+    // 3. Clear state
     this.connectedPeers.clear()
     this.isConnected = false
+    console.log('Disconnect completed')
   }
 
   async startStream(stream: MediaStream, quality: StreamState['quality'] = 'high') {

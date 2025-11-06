@@ -29,14 +29,20 @@ export class JsonDatabase {
 
     // Force initial load
     this.load().then(() => {
-      console.log('Initial database load complete');
+      console.log('Initial database load complete from', path.join(process.cwd(), 'data', this.dbPath));
     });
   }
 
   // Public method to get the singleton instance
   static getInstance(filename: string = 'test-data.json'): JsonDatabase {
-    if (!databaseInstance) {
+    // Ensure isServer is correctly set for the current context
+    const isServerEnv = typeof window === 'undefined';
+
+    if (!databaseInstance || databaseInstance.isServer !== isServerEnv) {
+      // If no instance exists, or the existing instance is for a different environment,
+      // create a new instance to ensure correct environment-specific behavior.
       databaseInstance = new JsonDatabase(filename);
+      databaseInstance.isServer = isServerEnv; // Explicitly set to ensure correctness
     }
     return databaseInstance;
   }
@@ -98,13 +104,16 @@ export class JsonDatabase {
   }
 
   private async load() {
+    console.log('Attempting to load data...', this.dbPath);
     try {
       if (this.isServer) {
         await this.ensureDataDirectory()
         const { readFile } = require('fs/promises')
         const { join } = require('path')
-        const content = await readFile(join(process.cwd(), 'data', this.dbPath), 'utf-8')
+        const filePath = join(process.cwd(), 'data', this.dbPath);
+        const content = await readFile(filePath, 'utf-8')
         this.data = JSON.parse(content)
+        console.log(`Data loaded successfully from ${filePath}`);
       } else {
         // In browser, use API endpoints and localStorage for participants
         const response = await fetch(`${this.apiBaseUrl}/rooms`)
@@ -125,6 +134,7 @@ export class JsonDatabase {
         })
         
         this.data = { rooms, events: [], participants: [] }
+        console.log('Data loaded successfully from API/localStorage (browser)');
       }
     } catch (error) {
       console.error('Load error:', error)
@@ -132,12 +142,14 @@ export class JsonDatabase {
       
       // Save the initial data to disk if we're on the server
       if (this.isServer) {
+        console.log('Initializing with default data and syncing to file...');
         await this.syncToFile();
       }
     }
   }
 
   private async save() {
+    console.log('Attempting to save data...', this.dbPath);
     try {
       if (!this.data) {
         await this.load()
@@ -146,7 +158,9 @@ export class JsonDatabase {
       if (this.isServer) {
         const { writeFile } = require('fs/promises')
         const { join } = require('path')
-        await writeFile(join(process.cwd(), 'data', this.dbPath), JSON.stringify(this.data, null, 2), 'utf-8')
+        const filePath = join(process.cwd(), 'data', this.dbPath);
+        await writeFile(filePath, JSON.stringify(this.data, null, 2), 'utf-8')
+        console.log(`Data saved successfully to ${filePath}`);
       } else {
         // In browser, save participants to localStorage
         const participants: { [roomId: string]: any[] } = {}
@@ -169,6 +183,7 @@ export class JsonDatabase {
         if (!response.ok) {
           throw new Error('Failed to update data via API')
         }
+        console.log('Data saved successfully via API/localStorage (browser)');
       }
     } catch (error) {
       console.error('Save error:', error)
@@ -178,23 +193,27 @@ export class JsonDatabase {
 
   async find(collection: string, query: Record<string, any> = {}) {
     await this.load()
+    console.log(`Finding in collection \`${collection}\` with query:`, query);
     return this.data[collection].filter((item: any) =>
       Object.entries(query).every(([key, value]) => item[key] === value)
     )
   }
 
   async findOne(collection: string, query: Record<string, any>) {
+    console.log(`Finding one in collection \`${collection}\` with query:`, query);
     const results = await this.find(collection, query)
     return results[0] || null
   }
 
   async insert(collection: string, document: Record<string, any>) {
+    console.log(`Inserting into collection \`${collection}\`:`, document);
     await this.load()
     this.data[collection].push(document)
     await this.save()
     
     // Also sync to file directly for participant changes
     if (collection === 'rooms' && document.participants) {
+      console.log('Triggering direct file sync after room insert (due to participants).');
       await this.syncToFile();
     }
     
@@ -202,6 +221,7 @@ export class JsonDatabase {
   }
 
   async update(collection: string, query: Record<string, any>, update: Record<string, any>) {
+    console.log(`Updating collection \`${collection}\` with query:`, query, 'updates:', update);
     await this.load()
     const index = this.data[collection].findIndex((item: any) =>
       Object.entries(query).every(([key, value]) => item[key] === value)
@@ -256,6 +276,7 @@ export class JsonDatabase {
       
       // Force a direct file sync when participant changes are made
       if (collection === 'rooms' && update.participants) {
+        console.log('Triggering direct file sync after room update (due to participants).');
         await this.syncToFile();
       }
       
@@ -265,6 +286,7 @@ export class JsonDatabase {
   }
 
   async delete(collection: string, query: Record<string, any>) {
+    console.log(`Deleting from collection \`${collection}\` with query:`, query);
     await this.load()
     const initialLength = this.data[collection].length
     this.data[collection] = this.data[collection].filter(
@@ -274,6 +296,7 @@ export class JsonDatabase {
     
     // If we deleted a room, sync the file
     if (collection === 'rooms') {
+      console.log('Triggering direct file sync after room delete.');
       await this.syncToFile();
     }
     

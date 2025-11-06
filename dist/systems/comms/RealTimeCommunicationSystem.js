@@ -57,6 +57,10 @@ export class RealTimeCommunicationSystem extends EventEmitter {
                 this.rooms.set(roomId, new Set());
             }
             this.rooms.get(roomId).add(socket.id);
+            socket.emit('welcome', {
+                message: `Welcome to ${roomId}, ${userId}`,
+                timestamp: new Date().toISOString()
+            });
             // Send room state to the joining user
             socket.emit('room_state', {
                 stream: this.streams.get(roomId) || { isActive: false, streamerId: null },
