@@ -28,8 +28,13 @@ export class JsonDatabase {
     }
     // Public method to get the singleton instance
     static getInstance(filename = 'test-data.json') {
-        if (!databaseInstance) {
+        // Ensure isServer is correctly set for the current context
+        const isServerEnv = typeof window === 'undefined';
+        if (!databaseInstance || databaseInstance.isServer !== isServerEnv) {
+            // If no instance exists, or the existing instance is for a different environment,
+            // create a new instance to ensure correct environment-specific behavior.
             databaseInstance = new JsonDatabase(filename);
+            databaseInstance.isServer = isServerEnv; // Explicitly set to ensure correctness
         }
         return databaseInstance;
     }

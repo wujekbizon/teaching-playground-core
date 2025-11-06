@@ -10,7 +10,12 @@ export default class TeachingPlayground {
         this.commsSystem = new RealTimeCommunicationSystem(config.commsConfig);
         this.eventSystem = new EventManagementSystem(config.eventConfig);
         this.dataSystem = new DataManagementSystem(config.dataConfig);
-        console.log('Teaching Playground initialized with all systems.');
+    }
+    setCurrentUser(user) {
+        this.currentUser = user;
+    }
+    getCurrentUser() {
+        return this.currentUser;
     }
     // Room Management
     async createClassroom(options) {
@@ -27,10 +32,6 @@ export default class TeachingPlayground {
         });
         this.commsSystem.setupForRoom(room.id);
         return room;
-    }
-    // User Management
-    setCurrentUser(user) {
-        this.currentUser = user;
     }
     async ensureUserAuthorized(user, action) {
         if (!user) {

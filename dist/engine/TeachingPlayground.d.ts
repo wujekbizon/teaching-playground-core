@@ -10,12 +10,13 @@ export default class TeachingPlayground {
     private dataSystem;
     private currentUser;
     constructor(config: TeachingPlaygroundConfig);
+    setCurrentUser(user: User | null): void;
+    getCurrentUser(): User | null;
     createClassroom(options: {
         name: string;
         capacity: number;
         features?: Partial<RoomFeatures>;
     }): Promise<import("../interfaces").Room>;
-    setCurrentUser(user: User): void;
     private ensureUserAuthorized;
     scheduleLecture(options: {
         name: string;
