@@ -46,7 +46,7 @@ export class RoomConnection extends EventEmitter {
     this.webrtc.on('iceCandidate', ({ peerId, candidate }) => {
       if (this.isConnected && this.socket) {
         console.log('ICE candidate generated for peer:', peerId)
-        this.socket.emit('ice_candidate', {
+        this.socket.emit('webrtc_ice_candidate', {
           roomId: this.roomId,
           peerId,
           candidate
@@ -70,9 +70,9 @@ export class RoomConnection extends EventEmitter {
         console.log('Negotiation needed for peer:', peerId)
         try {
           const offer = await this.webrtc.createOffer(peerId)
-          this.socket.emit('offer', {
+          this.socket.emit('webrtc_offer', {
             roomId: this.roomId,
-            to: peerId,
+            peerId: peerId,
             offer
           })
         } catch (error) {
@@ -147,25 +147,28 @@ export class RoomConnection extends EventEmitter {
     })
 
     // WebRTC signaling events
-    this.socket.on('offer_received', async ({ from, offer }) => {
+    this.socket.on('webrtc_offer', async ({ fromPeerId, offer }) => {
       try {
-        await this.handleOffer(from, offer)
+        console.log('Received WebRTC offer from:', fromPeerId)
+        await this.handleOffer(fromPeerId, offer)
       } catch (error) {
         console.error('Failed to handle offer:', error)
       }
     })
 
-    this.socket.on('answer_received', async ({ from, answer }) => {
+    this.socket.on('webrtc_answer', async ({ fromPeerId, answer }) => {
       try {
-        await this.handleAnswer(from, answer)
+        console.log('Received WebRTC answer from:', fromPeerId)
+        await this.handleAnswer(fromPeerId, answer)
       } catch (error) {
         console.error('Failed to handle answer:', error)
       }
     })
 
-    this.socket.on('ice_candidate_received', async ({ from, candidate }) => {
+    this.socket.on('webrtc_ice_candidate', async ({ fromPeerId, candidate }) => {
       try {
-        await this.handleIceCandidate(from, candidate)
+        console.log('Received ICE candidate from:', fromPeerId)
+        await this.handleIceCandidate(fromPeerId, candidate)
       } catch (error) {
         console.error('Failed to handle ICE candidate:', error)
       }
@@ -252,9 +255,9 @@ export class RoomConnection extends EventEmitter {
         try {
           await this.webrtc.addStream(peerId, stream)
           const offer = await this.webrtc.createOffer(peerId)
-          this.socket.emit('offer', {
+          this.socket.emit('webrtc_offer', {
             roomId: this.roomId,
-            to: peerId,
+            peerId: peerId,
             offer
           })
         } catch (error) {
@@ -309,9 +312,9 @@ export class RoomConnection extends EventEmitter {
     try {
       console.log('Handling offer from:', from)
       const answer = await this.webrtc.handleOffer(from, offer)
-      this.socket?.emit('answer', {
+      this.socket?.emit('webrtc_answer', {
         roomId: this.roomId,
-        to: from,
+        peerId: from,
         answer
       })
     } catch (error) {
