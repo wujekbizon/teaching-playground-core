@@ -75,6 +75,7 @@
     "@types/simple-peer": "^9.11.8",
     "@types/socket.io": "^3.0.2",
     "@types/socket.io-client": "^3.0.0",
+    "async-mutex": "^0.5.0",
     "eventemitter3": "^5.0.1",
     "simple-peer": "^9.11.1",
     "socket.io": "^4.8.1",
