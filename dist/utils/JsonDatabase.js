@@ -1,6 +1,7 @@
 import { SystemError } from '../interfaces';
 import fs from 'fs';
 import path from 'path';
+import { Mutex } from 'async-mutex';
 // Single database instance for the entire application
 let databaseInstance = null;
 export class JsonDatabase {
@@ -10,6 +11,7 @@ export class JsonDatabase {
         this.isServer = typeof window === 'undefined';
         this.apiBaseUrl = '/api';
         this.isSyncingToFile = false;
+        this.mutex = new Mutex(); // Add mutex for race condition prevention
         // Return existing instance if already created
         if (databaseInstance) {
             return databaseInstance;
@@ -175,88 +177,113 @@ export class JsonDatabase {
         }
     }
     async find(collection, query = {}) {
-        await this.load();
-        console.log(`Finding in collection \`${collection}\` with query:`, query);
-        return this.data[collection].filter((item) => Object.entries(query).every(([key, value]) => item[key] === value));
+        const release = await this.mutex.acquire();
+        try {
+            await this.load();
+            console.log(`Finding in collection \`${collection}\` with query:`, query);
+            return this.data[collection].filter((item) => Object.entries(query).every(([key, value]) => item[key] === value));
+        }
+        finally {
+            release();
+        }
     }
     async findOne(collection, query) {
+        // Note: find() already has mutex protection, no need to double-lock
         console.log(`Finding one in collection \`${collection}\` with query:`, query);
         const results = await this.find(collection, query);
         return results[0] || null;
     }
     async insert(collection, document) {
-        console.log(`Inserting into collection \`${collection}\`:`, document);
-        await this.load();
-        this.data[collection].push(document);
-        await this.save();
-        // Also sync to file directly for participant changes
-        if (collection === 'rooms' && document.participants) {
-            console.log('Triggering direct file sync after room insert (due to participants).');
-            await this.syncToFile();
-        }
-        return document;
-    }
-    async update(collection, query, update) {
-        console.log(`Updating collection \`${collection}\` with query:`, query, 'updates:', update);
-        await this.load();
-        const index = this.data[collection].findIndex((item) => Object.entries(query).every(([key, value]) => item[key] === value));
-        if (index !== -1) {
-            // Special handling for participants array updates
-            if (update.participants) {
-                const currentParticipants = this.data[collection][index].participants || [];
-                const updatedParticipants = update.participants;
-                // Track if participants actually changed
-                const beforeParticipantIds = new Set(currentParticipants.map((p) => p.id));
-                const afterParticipantIds = new Set(updatedParticipants.map((p) => p.id));
-                const participantsChanged = beforeParticipantIds.size !== afterParticipantIds.size ||
-                    [...beforeParticipantIds].some(id => !afterParticipantIds.has(id));
-                // Log the participant change
-                if (participantsChanged) {
-                    console.log(`Participants changed for ${collection} ${query.id}:`, {
-                        before: currentParticipants.map((p) => `${p.username} (${p.id})`),
-                        after: updatedParticipants.map((p) => `${p.username} (${p.id})`)
-                    });
-                }
-                // Remove participants that are no longer present
-                const remainingParticipants = currentParticipants.filter((p) => updatedParticipants.some((up) => up.id === p.id));
-                // Add new participants
-                updatedParticipants.forEach((participant) => {
-                    const existingIndex = remainingParticipants.findIndex((p) => p.id === participant.id);
-                    if (existingIndex === -1) {
-                        remainingParticipants.push(participant);
-                    }
-                    else {
-                        remainingParticipants[existingIndex] = participant;
-                    }
-                });
-                update.participants = remainingParticipants;
-            }
-            this.data[collection][index] = {
-                ...this.data[collection][index],
-                ...update,
-                lastModified: new Date().toISOString(),
-            };
+        const release = await this.mutex.acquire();
+        try {
+            console.log(`Inserting into collection \`${collection}\`:`, document);
+            await this.load();
+            this.data[collection].push(document);
             await this.save();
-            // Force a direct file sync when participant changes are made
-            if (collection === 'rooms' && update.participants) {
-                console.log('Triggering direct file sync after room update (due to participants).');
+            // Also sync to file directly for participant changes
+            if (collection === 'rooms' && document.participants) {
+                console.log('Triggering direct file sync after room insert (due to participants).');
                 await this.syncToFile();
             }
-            return this.data[collection][index];
+            return document;
         }
-        return null;
+        finally {
+            release();
+        }
+    }
+    async update(collection, query, update) {
+        const release = await this.mutex.acquire();
+        try {
+            console.log(`Updating collection \`${collection}\` with query:`, query, 'updates:', update);
+            await this.load();
+            const index = this.data[collection].findIndex((item) => Object.entries(query).every(([key, value]) => item[key] === value));
+            if (index !== -1) {
+                // Special handling for participants array updates
+                if (update.participants) {
+                    const currentParticipants = this.data[collection][index].participants || [];
+                    const updatedParticipants = update.participants;
+                    // Track if participants actually changed
+                    const beforeParticipantIds = new Set(currentParticipants.map((p) => p.id));
+                    const afterParticipantIds = new Set(updatedParticipants.map((p) => p.id));
+                    const participantsChanged = beforeParticipantIds.size !== afterParticipantIds.size ||
+                        [...beforeParticipantIds].some(id => !afterParticipantIds.has(id));
+                    // Log the participant change
+                    if (participantsChanged) {
+                        console.log(`Participants changed for ${collection} ${query.id}:`, {
+                            before: currentParticipants.map((p) => `${p.username} (${p.id})`),
+                            after: updatedParticipants.map((p) => `${p.username} (${p.id})`)
+                        });
+                    }
+                    // Remove participants that are no longer present
+                    const remainingParticipants = currentParticipants.filter((p) => updatedParticipants.some((up) => up.id === p.id));
+                    // Add new participants
+                    updatedParticipants.forEach((participant) => {
+                        const existingIndex = remainingParticipants.findIndex((p) => p.id === participant.id);
+                        if (existingIndex === -1) {
+                            remainingParticipants.push(participant);
+                        }
+                        else {
+                            remainingParticipants[existingIndex] = participant;
+                        }
+                    });
+                    update.participants = remainingParticipants;
+                }
+                this.data[collection][index] = {
+                    ...this.data[collection][index],
+                    ...update,
+                    lastModified: new Date().toISOString(),
+                };
+                await this.save();
+                // Force a direct file sync when participant changes are made
+                if (collection === 'rooms' && update.participants) {
+                    console.log('Triggering direct file sync after room update (due to participants).');
+                    await this.syncToFile();
+                }
+                return this.data[collection][index];
+            }
+            return null;
+        }
+        finally {
+            release();
+        }
     }
     async delete(collection, query) {
-        console.log(`Deleting from collection \`${collection}\` with query:`, query);
-        await this.load();
-        const initialLength = this.data[collection].length;
-        this.data[collection] = this.data[collection].filter((item) => !Object.entries(query).every(([key, value]) => item[key] === value));
-        await this.save();
-        // If we deleted a room, sync the file
-        if (collection === 'rooms') {
-            console.log('Triggering direct file sync after room delete.');
-            await this.syncToFile();
+        const release = await this.mutex.acquire();
+        try {
+            console.log(`Deleting from collection \`${collection}\` with query:`, query);
+            await this.load();
+            const initialLength = this.data[collection].length;
+            this.data[collection] = this.data[collection].filter((item) => !Object.entries(query).every(([key, value]) => item[key] === value));
+            await this.save();
+            // If we deleted a room, sync the file
+            if (collection === 'rooms') {
+                console.log('Triggering direct file sync after room delete.');
+                await this.syncToFile();
+            }
+            return initialLength !== this.data[collection].length;
         }
-        return initialLength !== this.data[collection].length;
+        finally {
+            release();
+        }
     }
 }

@@ -4,6 +4,7 @@ export declare class JsonDatabase {
     private isServer;
     private apiBaseUrl;
     private isSyncingToFile;
+    private mutex;
     constructor(filename?: string);
     static getInstance(filename?: string): JsonDatabase;
     private getInitialData;

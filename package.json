@@ -1,7 +1,7 @@
 {
   "name": "@teaching-playground/core",
-  "version": "1.0.3",
-  "description": "Core functionality for the Teaching Playground system, providing real-time communication, room management, and event handling capabilities.",
+  "version": "1.1.0",
+  "description": "A production-ready WebSocket and WebRTC virtual classroom system for real-time online education with video streaming, chat, and lecture management",
   "keywords": [
     "education",
     "virtual-classroom",

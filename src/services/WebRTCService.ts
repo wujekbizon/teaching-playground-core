@@ -178,7 +178,7 @@ export class WebRTCService extends EventEmitter {
     if (pc) {
       pc.close()
       this.peerConnections.delete(peerId)
-      this.transceivers.delete(peerId)
+      this.transceivers.delete(peerId) // ✅ FIX: Clean up transceivers
     }
   }
 
