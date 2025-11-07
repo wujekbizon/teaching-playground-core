@@ -44,7 +44,11 @@
     "test": "jest",
     "lint": "eslint src --ext .ts",
     "server": "tsx src/server.ts",
-    "server:dev": "tsx watch src/server.ts"
+    "server:dev": "tsx watch src/server.ts",
+    "test:package": "./scripts/test-package.sh",
+    "test:integration": "./scripts/test-in-project.sh",
+    "prepack": "npm run build",
+    "pack:inspect": "npm pack --dry-run"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
