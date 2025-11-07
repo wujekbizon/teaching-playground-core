@@ -1,0 +1,42 @@
+# Source files
+src/
+tsconfig.json
+
+# Tests
+__tests__/
+__tests_backup/
+*.test.ts
+*.spec.ts
+jest.config.js
+
+# Development files
+.git/
+.gitignore
+*.log
+*.lock
+pnpm-lock.yaml
+node_modules/
+
+# Development scripts
+server.ts
+src/server.ts
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Documentation (keep README.md)
+docs/
+*.md
+!README.md
+
+# Build artifacts
+*.tsbuildinfo

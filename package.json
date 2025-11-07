@@ -1,12 +1,46 @@
 {
   "name": "@teaching-playground/core",
   "version": "1.0.2",
+  "description": "A production-ready WebSocket and WebRTC virtual classroom system for real-time online education with video streaming, chat, and lecture management",
+  "keywords": [
+    "education",
+    "virtual-classroom",
+    "webrtc",
+    "websocket",
+    "socket.io",
+    "video-streaming",
+    "real-time",
+    "teaching",
+    "lecture",
+    "classroom",
+    "chat",
+    "streaming"
+  ],
+  "author": "wujekbizon",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wujekbizon/teaching-playground-core.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wujekbizon/teaching-playground-core/issues"
+  },
+  "homepage": "https://github.com/wujekbizon/teaching-playground-core#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "tsc --watch",
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "test": "jest",
     "lint": "eslint src --ext .ts",
     "server": "tsx src/server.ts",
