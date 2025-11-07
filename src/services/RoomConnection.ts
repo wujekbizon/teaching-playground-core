@@ -5,10 +5,12 @@ import { WebRTCService } from './WebRTCService'
 import { SystemError } from '../interfaces'
 
 interface RoomMessage {
+  messageId: string  // v1.1.0: Added unique message ID
   userId: string
   username: string
   content: string
   timestamp: string
+  sequence: number   // v1.1.0: Added sequence number
 }
 
 interface StreamState {
@@ -132,15 +134,24 @@ export class RoomConnection extends EventEmitter {
       this.emit('welcome', data) // Re-emit for useRoomConnection to pick up
     })
 
+    // v1.1.0: room_state no longer includes messages
     this.socket.on('room_state', (state: {
       stream: StreamState | null,
-      messages: RoomMessage[],
-      participants: string[]
+      participants: any[] // Now full participant objects
     }) => {
       console.log('Received room state:', state)
-      this.messageHistory = state.messages
       this.currentStream = state.stream
       this.emit('room_state', state)
+
+      // Request message history separately
+      this.socket?.emit('request_message_history', this.roomId)
+    })
+
+    // v1.1.0: New message_history event
+    this.socket.on('message_history', (data: { messages: RoomMessage[] }) => {
+      console.log('Received message history:', data.messages.length, 'messages')
+      this.messageHistory = data.messages
+      this.emit('message_history', data.messages)
     })
 
     this.socket.on('new_message', (message: RoomMessage) => {
@@ -186,15 +197,33 @@ export class RoomConnection extends EventEmitter {
       this.emit('stream_stopped')
     })
 
-    this.socket.on('user_joined', ({ userId, socketId }) => {
+    this.socket.on('user_joined', (participant: any) => {
+      // v1.1.0: user_joined now sends full participant object
+      const socketId = participant.socketId || participant.id
       this.connectedPeers.add(socketId)
-      this.emit('user_joined', { userId, socketId })
+      this.emit('user_joined', participant)
     })
 
-    this.socket.on('user_left', ({ socketId }) => {
+    this.socket.on('user_left', (participant: any) => {
+      // v1.1.0: user_left now sends full participant object
+      const socketId = participant.socketId || participant.id
       this.webrtc.closeConnection(socketId)
       this.connectedPeers.delete(socketId)
-      this.emit('user_left', { socketId })
+      this.emit('user_left', participant)
+    })
+
+    // v1.1.0: New room_closed event
+    this.socket.on('room_closed', (data: { roomId: string; reason: string; timestamp: string }) => {
+      console.log('Room closed:', data)
+      this.emit('room_closed', data)
+      // Automatically disconnect
+      this.disconnect()
+    })
+
+    // v1.1.0: New server_shutdown event
+    this.socket.on('server_shutdown', (data: { message: string; timestamp: string }) => {
+      console.log('Server shutting down:', data)
+      this.emit('server_shutdown', data)
     })
 
     this.socket.on('error', (error) => {
@@ -222,7 +251,8 @@ export class RoomConnection extends EventEmitter {
 
   private joinRoom() {
     if (!this.socket || !this.isConnected) return
-    this.socket.emit('join_room', this.roomId, this.user.id)
+    // v1.1.0: Send full user object
+    this.socket.emit('join_room', { roomId: this.roomId, user: this.user })
   }
 
   disconnect() {
@@ -300,10 +330,14 @@ export class RoomConnection extends EventEmitter {
       throw new Error('Not connected to room')
     }
 
-    this.socket?.emit('send_message', this.roomId, {
-      userId: this.user.id,
-      username: this.user.username,
-      content
+    // v1.1.0: Send with new structure
+    this.socket?.emit('send_message', {
+      roomId: this.roomId,
+      message: {
+        userId: this.user.id,
+        username: this.user.username,
+        content
+      }
     })
   }
 
