@@ -26,6 +26,9 @@ importers:
       '@types/socket.io-client':
         specifier: ^3.0.0
         version: 3.0.0
+      async-mutex:
+        specifier: ^0.5.0
+        version: 0.5.0
       eventemitter3:
         specifier: ^5.0.1
         version: 5.0.1
@@ -889,6 +892,9 @@ packages:
 
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
+
+  async-mutex@0.5.0:
+    resolution: {integrity: sha512-1A94B18jkJ3DYq284ohPxoXbfTA5HsQ7/Mf4DEhcyLx3Bz27Rh59iScbB6EPiP+B+joue6YCxcMXSbFC1tZKwA==}
 
   babel-jest@29.7.0:
     resolution: {integrity: sha512-BrvGY3xZSwEcCzKvKsCi2GgHqDqsYkOP4/by5xCgIwGXQxIEh+8ew3gmrE1y7XRR6LHZIj6yLYnUi/mm2KXKBg==}
@@ -2014,6 +2020,9 @@ packages:
         optional: true
       jest-util:
         optional: true
+
+  tslib@2.8.1:
+    resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
   tsx@4.19.3:
     resolution: {integrity: sha512-4H8vUNGNjQ4V2EOoGw005+c+dGuPSnhpPBPHBtsZdGZBk/iJb4kguGlPWaZTZ3q5nMtFOEsY0nRDlh9PJyd6SQ==}
@@ -3187,6 +3196,10 @@ snapshots:
       sprintf-js: 1.0.3
 
   argparse@2.0.1: {}
+
+  async-mutex@0.5.0:
+    dependencies:
+      tslib: 2.8.1
 
   babel-jest@29.7.0(@babel/core@7.26.10):
     dependencies:
@@ -4640,6 +4653,8 @@ snapshots:
       '@jest/types': 30.2.0
       babel-jest: 29.7.0(@babel/core@7.28.5)
       jest-util: 30.2.0
+
+  tslib@2.8.1: {}
 
   tsx@4.19.3:
     dependencies:

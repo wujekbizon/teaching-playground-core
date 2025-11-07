@@ -1,6 +1,7 @@
 import { SystemError } from '../interfaces'
 import fs from 'fs'
 import path from 'path'
+import { Mutex } from 'async-mutex'
 
 // Single database instance for the entire application
 let databaseInstance: JsonDatabase | null = null;
@@ -11,6 +12,7 @@ export class JsonDatabase {
   private isServer: boolean = typeof window === 'undefined'
   private apiBaseUrl: string = '/api'
   private isSyncingToFile: boolean = false
+  private mutex: Mutex = new Mutex() // Add mutex for race condition prevention
 
   constructor(filename: string = 'test-data.json') {
     // Return existing instance if already created
@@ -192,114 +194,135 @@ export class JsonDatabase {
   }
 
   async find(collection: string, query: Record<string, any> = {}) {
-    await this.load()
-    console.log(`Finding in collection \`${collection}\` with query:`, query);
-    return this.data[collection].filter((item: any) =>
-      Object.entries(query).every(([key, value]) => item[key] === value)
-    )
+    const release = await this.mutex.acquire()
+    try {
+      await this.load()
+      console.log(`Finding in collection \`${collection}\` with query:`, query);
+      return this.data[collection].filter((item: any) =>
+        Object.entries(query).every(([key, value]) => item[key] === value)
+      )
+    } finally {
+      release()
+    }
   }
 
   async findOne(collection: string, query: Record<string, any>) {
+    // Note: find() already has mutex protection, no need to double-lock
     console.log(`Finding one in collection \`${collection}\` with query:`, query);
     const results = await this.find(collection, query)
     return results[0] || null
   }
 
   async insert(collection: string, document: Record<string, any>) {
-    console.log(`Inserting into collection \`${collection}\`:`, document);
-    await this.load()
-    this.data[collection].push(document)
-    await this.save()
-    
-    // Also sync to file directly for participant changes
-    if (collection === 'rooms' && document.participants) {
-      console.log('Triggering direct file sync after room insert (due to participants).');
-      await this.syncToFile();
+    const release = await this.mutex.acquire()
+    try {
+      console.log(`Inserting into collection \`${collection}\`:`, document);
+      await this.load()
+      this.data[collection].push(document)
+      await this.save()
+
+      // Also sync to file directly for participant changes
+      if (collection === 'rooms' && document.participants) {
+        console.log('Triggering direct file sync after room insert (due to participants).');
+        await this.syncToFile();
+      }
+
+      return document
+    } finally {
+      release()
     }
-    
-    return document
   }
 
   async update(collection: string, query: Record<string, any>, update: Record<string, any>) {
-    console.log(`Updating collection \`${collection}\` with query:`, query, 'updates:', update);
-    await this.load()
-    const index = this.data[collection].findIndex((item: any) =>
-      Object.entries(query).every(([key, value]) => item[key] === value)
-    )
+    const release = await this.mutex.acquire()
+    try {
+      console.log(`Updating collection \`${collection}\` with query:`, query, 'updates:', update);
+      await this.load()
+      const index = this.data[collection].findIndex((item: any) =>
+        Object.entries(query).every(([key, value]) => item[key] === value)
+      )
 
-    if (index !== -1) {
-      // Special handling for participants array updates
-      if (update.participants) {
-        const currentParticipants = this.data[collection][index].participants || []
-        const updatedParticipants = update.participants
-        
-        // Track if participants actually changed
-        const beforeParticipantIds = new Set(currentParticipants.map((p: any) => p.id));
-        const afterParticipantIds = new Set(updatedParticipants.map((p: any) => p.id));
-        const participantsChanged = 
-          beforeParticipantIds.size !== afterParticipantIds.size || 
-          [...beforeParticipantIds].some(id => !afterParticipantIds.has(id));
-        
-        // Log the participant change
-        if (participantsChanged) {
-          console.log(`Participants changed for ${collection} ${query.id}:`, {
-            before: currentParticipants.map((p: any) => `${p.username} (${p.id})`),
-            after: updatedParticipants.map((p: any) => `${p.username} (${p.id})`)
-          });
-        }
-        
-        // Remove participants that are no longer present
-        const remainingParticipants = currentParticipants.filter(
-          (p: any) => updatedParticipants.some((up: any) => up.id === p.id)
-        )
-        
-        // Add new participants
-        updatedParticipants.forEach((participant: any) => {
-          const existingIndex = remainingParticipants.findIndex((p: any) => p.id === participant.id)
-          if (existingIndex === -1) {
-            remainingParticipants.push(participant)
-          } else {
-            remainingParticipants[existingIndex] = participant
+      if (index !== -1) {
+        // Special handling for participants array updates
+        if (update.participants) {
+          const currentParticipants = this.data[collection][index].participants || []
+          const updatedParticipants = update.participants
+
+          // Track if participants actually changed
+          const beforeParticipantIds = new Set(currentParticipants.map((p: any) => p.id));
+          const afterParticipantIds = new Set(updatedParticipants.map((p: any) => p.id));
+          const participantsChanged =
+            beforeParticipantIds.size !== afterParticipantIds.size ||
+            [...beforeParticipantIds].some(id => !afterParticipantIds.has(id));
+
+          // Log the participant change
+          if (participantsChanged) {
+            console.log(`Participants changed for ${collection} ${query.id}:`, {
+              before: currentParticipants.map((p: any) => `${p.username} (${p.id})`),
+              after: updatedParticipants.map((p: any) => `${p.username} (${p.id})`)
+            });
           }
-        })
-        
-        update.participants = remainingParticipants
-      }
 
-      this.data[collection][index] = {
-        ...this.data[collection][index],
-        ...update,
-        lastModified: new Date().toISOString(),
-      }
+          // Remove participants that are no longer present
+          const remainingParticipants = currentParticipants.filter(
+            (p: any) => updatedParticipants.some((up: any) => up.id === p.id)
+          )
 
-      await this.save()
-      
-      // Force a direct file sync when participant changes are made
-      if (collection === 'rooms' && update.participants) {
-        console.log('Triggering direct file sync after room update (due to participants).');
-        await this.syncToFile();
+          // Add new participants
+          updatedParticipants.forEach((participant: any) => {
+            const existingIndex = remainingParticipants.findIndex((p: any) => p.id === participant.id)
+            if (existingIndex === -1) {
+              remainingParticipants.push(participant)
+            } else {
+              remainingParticipants[existingIndex] = participant
+            }
+          })
+
+          update.participants = remainingParticipants
+        }
+
+        this.data[collection][index] = {
+          ...this.data[collection][index],
+          ...update,
+          lastModified: new Date().toISOString(),
+        }
+
+        await this.save()
+
+        // Force a direct file sync when participant changes are made
+        if (collection === 'rooms' && update.participants) {
+          console.log('Triggering direct file sync after room update (due to participants).');
+          await this.syncToFile();
+        }
+
+        return this.data[collection][index]
       }
-      
-      return this.data[collection][index]
+      return null
+    } finally {
+      release()
     }
-    return null
   }
 
   async delete(collection: string, query: Record<string, any>) {
-    console.log(`Deleting from collection \`${collection}\` with query:`, query);
-    await this.load()
-    const initialLength = this.data[collection].length
-    this.data[collection] = this.data[collection].filter(
-      (item: any) => !Object.entries(query).every(([key, value]) => item[key] === value)
-    )
-    await this.save()
-    
-    // If we deleted a room, sync the file
-    if (collection === 'rooms') {
-      console.log('Triggering direct file sync after room delete.');
-      await this.syncToFile();
+    const release = await this.mutex.acquire()
+    try {
+      console.log(`Deleting from collection \`${collection}\` with query:`, query);
+      await this.load()
+      const initialLength = this.data[collection].length
+      this.data[collection] = this.data[collection].filter(
+        (item: any) => !Object.entries(query).every(([key, value]) => item[key] === value)
+      )
+      await this.save()
+
+      // If we deleted a room, sync the file
+      if (collection === 'rooms') {
+        console.log('Triggering direct file sync after room delete.');
+        await this.syncToFile();
+      }
+
+      return initialLength !== this.data[collection].length
+    } finally {
+      release()
     }
-    
-    return initialLength !== this.data[collection].length
   }
 }
