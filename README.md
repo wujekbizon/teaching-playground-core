@@ -96,29 +96,50 @@ Perfect for educational platforms like **Wolfmed**, this system enables:
 
 ## 🏗️ Architecture
 
-### High-Level Design
+### Industry-Standard Design (v1.1.2+)
+
+Following best practices from Zoom, Google Meet, and Microsoft Teams:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                   Teaching Playground Engine                 │
-│         (Orchestrates all systems and user sessions)          │
-└──────────────────────┬────────────────────────────────────────┘
-                       │
-    ┌──────────────────┼──────────────────┬──────────────────┐
-    │                  │                   │                  │
-┌───▼────┐      ┌──────▼──────┐    ┌──────▼──────┐   ┌──────▼──────┐
-│  Room  │      │    Event    │    │    Comms    │   │    Data     │
-│  Mgmt  │      │    Mgmt     │    │    System   │   │    Mgmt     │
-└───┬────┘      └──────┬──────┘    └──────┬──────┘   └──────┬──────┘
-    │                  │                   │                  │
-    │                  │                   │                  │
-    └──────────────────┴───────────────────┴──────────────────┘
-                               │
-                        ┌──────▼──────┐
-                        │ JsonDatabase │
-                        │  (Storage)   │
-                        └──────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                  Teaching Playground Engine                     │
+│           (Orchestrates all systems and user sessions)          │
+└──────────────────┬──────────────────────────────────────────────┘
+                   │
+    ┌──────────────┼──────────────────┬──────────────────┐
+    │              │                   │                  │
+┌───▼────┐  ┌──────▼──────┐    ┌──────▼──────┐   ┌──────▼──────┐
+│  Room  │  │    Event    │    │    Comms    │   │    Data     │
+│  Mgmt  │  │    Mgmt     │    │    System   │   │    Mgmt     │
+└───┬────┘  └──────┬──────┘    └──────┬──────┘   └──────┬──────┘
+    │              │                   │                  │
+    │              │                   │                  │
+    │              │           ┌───────┴────────┐         │
+    │              │           │                │         │
+    └──────────────┴───────────┤  IN-MEMORY     ├─────────┘
+                               │  (WebSocket)   │
+                               │                │
+                               │ • Participants │
+                               │ • Streams      │
+                               │ • Messages     │
+                               └────────────────┘
+                                       │
+                               ┌───────▼────────┐
+                               │  PERSISTENT    │
+                               │  (Database)    │
+                               │                │
+                               │ • Lectures     │
+                               │ • Rooms        │
+                               │ • Config       │
+                               └────────────────┘
 ```
+
+**Key Architectural Principles:**
+
+1. **Persistent Data (Database)**: Lectures, rooms, configuration
+2. **Ephemeral Data (Memory)**: Active participants, live streams, recent messages
+3. **Separation of Concerns**: Database for persistence, WebSocket for real-time state
+4. **Single Source of Truth**: Participant state managed exclusively by WebSocket connections
 
 ### System Components
 
@@ -131,13 +152,15 @@ The main orchestrator that coordinates all systems. Provides a unified API for:
 - System health monitoring
 
 #### 2. **Room Management System** (`src/systems/room/RoomManagementSystem.ts`)
-Manages virtual classrooms and participants:
+Manages virtual classrooms:
 - Create/read/update/delete rooms
-- Add/remove participants
 - Track room status and capacity
 - Manage lecture assignments
-- Participant streaming status
+- Query active participants (from WebSocket memory)
+- Room state monitoring
 - Permission management
+
+**Note (v1.1.2+)**: Participant management moved to WebSocket layer. Methods like `addParticipant()` are deprecated. Use WebSocket `join_room` events instead.
 
 #### 3. **Event Management System** (`src/systems/event/EventManagementSystem.ts`)
 Handles lecture scheduling and lifecycle:
@@ -152,11 +175,17 @@ Handles lecture scheduling and lifecycle:
 WebSocket and WebRTC communication:
 - Socket.IO server initialization
 - Room-based messaging
+- **Participant management in memory** (industry-standard approach)
 - Stream management (start/stop)
 - ICE candidate exchange
 - Connection state tracking
 - Message history (100 messages/room)
 - User presence (join/leave events)
+- Automatic cleanup after 30 minutes of inactivity
+- Rate limiting (5 messages per 10 seconds per user)
+- Graceful shutdown with client notifications
+
+**Note (v1.1.2+)**: This is now the **single source of truth** for active participants. Participants are stored in `Map<roomId, Map<socketId, RoomParticipant>>` in memory only.
 
 #### 5. **Data Management System** (`src/systems/data/DataManagementSystem.ts`)
 Abstract data persistence layer:
@@ -693,12 +722,15 @@ interface Room {
   capacity: number;
   status: 'available' | 'occupied' | 'scheduled' | 'maintenance';
   features: RoomFeatures;
-  participants: RoomParticipant[];
+  // NOTE: participants are NOT in database (v1.1.2+)
+  // They only exist in RealTimeCommunicationSystem memory
   currentLecture: Lecture | null;
   createdAt: string;
   updatedAt: string;
 }
 ```
+
+**Breaking Change (v1.1.2+):** The `participants` array has been removed from the Room interface. Active participants are now stored exclusively in WebSocket memory. Use `roomSystem.getRoomParticipants(roomId)` to query active participants.
 
 #### Lecture
 ```typescript
@@ -715,13 +747,16 @@ interface Lecture {
   maxParticipants?: number;
   startTime?: string;
   endTime?: string;
-  participants?: RoomParticipant[];
+  // NOTE: participants are NOT in database (v1.1.2+)
+  // They only exist in RealTimeCommunicationSystem memory
   communicationStatus?: any;
   metadata?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
 ```
+
+**Breaking Change (v1.1.2+):** The `participants` array has been removed from the Lecture interface. This follows the industry-standard pattern where lectures (meetings) are persistent database records, while active participants are ephemeral WebSocket state.
 
 ---
 
@@ -1143,31 +1178,52 @@ For questions, issues, or feature requests:
 
 ## 🗺️ Roadmap
 
-### Current Version (1.0.2)
-- ✅ WebSocket communication
-- ✅ WebRTC peer connections
-- ✅ Room management
-- ✅ Lecture scheduling
-- ✅ Real-time chat
-- ✅ User authorization
+### Current Version (1.1.2) ✅
+- ✅ **Industry-Standard Architecture** - Database for persistent, WebSocket for ephemeral data
+- ✅ **WebSocket Communication** - Socket.IO with auto-reconnection
+- ✅ **WebRTC Peer Connections** - One-to-many video streaming
+- ✅ **Room Management** - Virtual classrooms with capacity limits
+- ✅ **Lecture Scheduling** - Full lifecycle management
+- ✅ **Real-Time Chat** - Instant messaging with history
+- ✅ **User Authorization** - Role-based access control
+- ✅ **Automatic Cleanup** - 30-minute inactivity threshold
+- ✅ **Rate Limiting** - Message throttling (5 msgs/10s)
+- ✅ **Race Condition Protection** - Mutex-based atomic operations
+- ✅ **WebRTC Signaling** - Offer/Answer/ICE candidate handling
+- ✅ **Full Participant Objects** - Complete user info in WebSocket memory
+- ✅ **Graceful Shutdown** - Proper cleanup and client notification
+- ✅ **Environment Validation** - Startup configuration checks
 
-### Upcoming Features (1.1.0)
-- [ ] Whiteboard implementation
-- [ ] Recording and playback
-- [ ] Advanced analytics
-- [ ] Redis integration
-- [ ] PostgreSQL adapter
-- [ ] Horizontal scaling
-- [ ] Load balancing support
+### Version 1.2.0 (Planned)
+- [ ] **Whiteboard Implementation** - Real-time collaborative drawing
+- [ ] **Recording and Playback** - Lecture recording with replay
+- [ ] **Advanced Analytics** - Usage metrics and insights
+- [ ] **Breakout Rooms** - Small group sessions within lectures
+- [ ] **Polling/Quizzes** - Interactive student engagement
+- [ ] **Hand Raise System** - Student participation queue
+- [ ] **Screen Annotation** - Teacher markup during screen share
+- [ ] **File Sharing** - Document distribution in rooms
 
-### Future (2.0.0)
-- [ ] AI-powered features
-- [ ] Automated transcription
-- [ ] Multi-language support
-- [ ] Mobile SDK
-- [ ] Plugin system
-- [ ] Advanced permissions
-- [ ] Custom branding
+### Version 1.3.0 (Planned)
+- [ ] **Redis Integration** - Distributed session storage
+- [ ] **PostgreSQL Adapter** - Production-grade database
+- [ ] **Horizontal Scaling** - Multi-server support
+- [ ] **Load Balancing** - Sticky session distribution
+- [ ] **Admin Dashboard** - System monitoring and management
+- [ ] **User Presence** - Advanced online/away/busy states
+- [ ] **Chat Moderation** - Message filtering and controls
+
+### Version 2.0.0 (Future Vision)
+- [ ] **AI-Powered Features** - Smart recommendations
+- [ ] **Automated Transcription** - Real-time lecture captions
+- [ ] **Multi-Language Support** - i18n for global reach
+- [ ] **Mobile SDK** - React Native/Flutter packages
+- [ ] **Plugin System** - Extensible architecture
+- [ ] **Advanced Permissions** - Fine-grained access control
+- [ ] **Custom Branding** - White-label support
+- [ ] **SFU Support** - Selective Forwarding Unit for large classes
+- [ ] **RTMP Streaming** - Broadcast to YouTube/Twitch
+- [ ] **Virtual Backgrounds** - AI-powered background replacement
 
 ---
 

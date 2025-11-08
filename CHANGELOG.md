@@ -5,6 +5,119 @@ All notable changes to the Teaching Playground Core package will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2025-11-08
+
+### 🏗️ BREAKING CHANGES - Industry-Standard Architecture
+
+Following analysis of production issues and best practices from Zoom, Google Meet, and Microsoft Teams, we've adopted an industry-standard architecture where:
+
+- **Database** stores persistent data (lectures, rooms)
+- **WebSocket** stores ephemeral data (active participants, streams)
+
+**This is a fundamental architectural change.**
+
+### Changed
+
+- **BREAKING**: Removed `participants` array from `Room` interface (database schema)
+- **BREAKING**: Removed `participants` array from `Lecture` interface (database schema)
+- **BREAKING**: Participants now ONLY exist in `RealTimeCommunicationSystem` memory (WebSocket)
+- **BREAKING**: `RoomManagementSystem.addParticipant()` is now deprecated (throws error with migration message)
+- **BREAKING**: `RoomManagementSystem.removeParticipant()` is now deprecated
+- **BREAKING**: `RoomManagementSystem.updateParticipantStreamingStatus()` is now deprecated
+- **BREAKING**: `RoomManagementSystem.clearParticipants()` is now deprecated
+
+### Added
+
+- `RealTimeCommunicationSystem.getRoomParticipants()` - Query active participants from WebSocket memory
+- `RoomManagementSystem.getRoomParticipants()` - Now proxies to WebSocket memory instead of database
+- Comprehensive inline documentation explaining the new architecture
+- Helpful error messages in deprecated methods guiding users to correct approach
+
+### Fixed
+
+- **CRITICAL**: Fixed `startStream` signature mismatch between client and server
+  - Server now expects `{ roomId, username, quality }` (was `{ roomId, userId, quality }`)
+  - Client now sends object structure (was 3 separate arguments)
+  - `StreamState.streamerId` now uses **username** for display (not UUID)
+  - Resolves "Stream ID: null" bug reported in production testing
+- `createRoom()` no longer initializes empty `participants` array
+- `endLecture()` no longer tries to clear participants from database
+- `getRoomState()` now gets participant count from WebSocket memory, not database
+
+### Migration Guide
+
+**Database Migration:**
+Existing `participants` arrays in database will be ignored. You can safely:
+- Leave them in place (will be ignored)
+- Clean them up manually if desired
+- No action required - the package handles the migration
+
+**Code Migration:**
+
+**Before (v1.1.1):**
+```typescript
+// ❌ Don't do this anymore
+await roomSystem.addParticipant(roomId, user)
+await roomSystem.removeParticipant(roomId, userId)
+
+// Participants in database
+const room = await db.findOne('rooms', { id: roomId })
+console.log(room.participants) // Was in database
+```
+
+**After (v1.1.2):**
+```typescript
+// ✅ Participants auto-managed via WebSocket events
+// When user connects, they're automatically added
+connection.connect()  // Triggers join_room event
+
+// Get active participants from memory
+const participants = roomSystem.getCommsSystem().getRoomParticipants(roomId)
+// OR
+const participants = await roomSystem.getRoomParticipants(roomId)
+
+// Database rooms no longer have participants
+const room = await db.findOne('rooms', { id: roomId })
+console.log(room.participants) // ❌ Property doesn't exist
+```
+
+**Frontend Applications:**
+- ✅ No changes needed if already using WebSocket `join_room`/`leave_room` events
+- ✅ Database-stored participant data will be ignored
+- ✅ All participant state is now in WebSocket memory
+
+### Architecture Benefits
+
+Following industry-standard approach provides:
+- ✅ **Clarity**: Database = persistent, WebSocket = ephemeral
+- ✅ **Performance**: No unnecessary database writes for transient data
+- ✅ **Accuracy**: Participants automatically managed by connection state
+- ✅ **Simplicity**: One source of truth for active participants
+- ✅ **Scalability**: Aligns with how professional platforms work
+
+## [1.1.1] - 2025-11-08
+
+### Fixed
+
+- **CRITICAL**: Fixed `RoomConnection` client API compatibility with v1.1.0 server
+  - Updated `joinRoom()` to send `{ roomId, user }` object (was separate arguments)
+  - Updated `sendMessage()` to send `{ roomId, message }` structure
+  - Updated `room_state` handler to not expect `messages` array
+  - Added `message_history` event handler
+  - Added `room_closed` and `server_shutdown` event handlers
+  - Updated `user_joined`/`user_left` handlers for full participant objects
+  - Updated `RoomMessage` interface with `messageId` and `sequence`
+
+### Changed
+
+- `RoomConnection.startStream()` signature preparation for v1.1.2 fix
+
+### Notes
+
+- This version fixes the client-side code to match the v1.1.0 server API changes
+- Without this fix, `join_room` and `send_message` events would fail
+- **Users on v1.1.0 should upgrade to v1.1.1 immediately**
+
 ## [1.1.0] - 2025-11-07
 
 ### Added
