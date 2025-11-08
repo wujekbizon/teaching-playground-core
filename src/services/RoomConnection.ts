@@ -40,6 +40,12 @@ export class RoomConnection extends EventEmitter {
   private screenShareStream: MediaStream | null = null
   private originalVideoTrack: MediaStreamTrack | null = null
 
+  // v1.4.0: Client-side recording
+  private mediaRecorder: MediaRecorder | null = null
+  private recordedChunks: Blob[] = []
+  private recordingStartTime: number | null = null
+  private localStream: MediaStream | null = null
+
   constructor(
     private roomId: string,
     private user: User,
@@ -300,6 +306,17 @@ export class RoomConnection extends EventEmitter {
     this.socket.on('hand_lowered', (data: { userId: string; timestamp: string }) => {
       console.log('Hand lowered:', data)
       this.emit('hand_lowered', data)
+    })
+
+    // v1.4.0: Recording notification events
+    this.socket.on('lecture_recording_started', (data: { teacherId: string; timestamp: string }) => {
+      console.log('Lecture recording started:', data)
+      this.emit('lecture_recording_started', data)
+    })
+
+    this.socket.on('lecture_recording_stopped', (data: { teacherId: string; duration: number; timestamp: string }) => {
+      console.log('Lecture recording stopped:', data)
+      this.emit('lecture_recording_stopped', data)
     })
 
     this.socket.on('error', (error) => {
@@ -821,5 +838,174 @@ export class RoomConnection extends EventEmitter {
     })
 
     console.log('Hand lowered')
+  }
+
+  /**
+   * v1.4.0: Start recording lecture (teacher/admin only)
+   * Records local screen/camera stream using MediaRecorder API
+   * @param stream - MediaStream to record (screen share or camera)
+   * @param options - Recording options
+   */
+  async startRecording(
+    stream: MediaStream,
+    options?: {
+      mimeType?: string
+      videoBitsPerSecond?: number
+    }
+  ): Promise<void> {
+    if (this.user.role !== 'teacher' && this.user.role !== 'admin') {
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers/admins can record lectures')
+    }
+
+    if (!this.isConnected || !this.socket) {
+      throw new SystemError('NOT_CONNECTED', 'Cannot start recording: not connected')
+    }
+
+    if (this.mediaRecorder?.state === 'recording') {
+      throw new SystemError('ALREADY_RECORDING', 'Recording already in progress')
+    }
+
+    if (!stream) {
+      throw new SystemError('NO_STREAM', 'No stream available to record')
+    }
+
+    // Store stream reference
+    this.localStream = stream
+
+    // Determine best mimeType
+    const mimeType = options?.mimeType || this.getSupportedMimeType()
+    const videoBitsPerSecond = options?.videoBitsPerSecond || 2500000 // 2.5 Mbps
+
+    try {
+      // Create MediaRecorder
+      this.mediaRecorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond
+      })
+
+      this.recordedChunks = []
+      this.recordingStartTime = Date.now()
+
+      // Handle data available
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          this.recordedChunks.push(event.data)
+        }
+      }
+
+      // Handle recording stop
+      this.mediaRecorder.onstop = () => {
+        const blob = new Blob(this.recordedChunks, { type: mimeType })
+        const duration = this.recordingStartTime
+          ? Math.floor((Date.now() - this.recordingStartTime) / 1000)
+          : 0
+
+        this.emit('recording_stopped', {
+          blob,
+          duration,
+          size: blob.size,
+          mimeType,
+          timestamp: new Date().toISOString()
+        })
+
+        console.log(`Recording stopped - Duration: ${duration}s, Size: ${blob.size} bytes`)
+      }
+
+      // Handle errors
+      this.mediaRecorder.onerror = (event: Event) => {
+        console.error('MediaRecorder error:', event)
+        this.emit('recording_error', {
+          error: 'Recording failed',
+          timestamp: new Date().toISOString()
+        })
+      }
+
+      // Start recording (collect data every second)
+      this.mediaRecorder.start(1000)
+
+      // Emit local event
+      this.emit('recording_started', {
+        timestamp: new Date().toISOString()
+      })
+
+      // Notify room participants
+      this.socket.emit('recording_started', {
+        roomId: this.roomId,
+        teacherId: this.user.id
+      })
+
+      console.log('Recording started')
+    } catch (error) {
+      console.error('Failed to start recording:', error)
+      throw new SystemError('RECORDING_FAILED', `Failed to start recording: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  /**
+   * v1.4.0: Stop recording
+   */
+  stopRecording(): void {
+    if (!this.mediaRecorder || this.mediaRecorder.state !== 'recording') {
+      throw new SystemError('NOT_RECORDING', 'No recording in progress')
+    }
+
+    if (!this.socket) {
+      throw new SystemError('NOT_CONNECTED', 'Cannot stop recording: not connected')
+    }
+
+    const duration = this.recordingStartTime
+      ? Math.floor((Date.now() - this.recordingStartTime) / 1000)
+      : 0
+
+    // Stop the recorder (this will trigger onstop event)
+    this.mediaRecorder.stop()
+
+    // Notify room participants
+    this.socket.emit('recording_stopped', {
+      roomId: this.roomId,
+      teacherId: this.user.id,
+      duration
+    })
+
+    console.log('Recording stopped')
+  }
+
+  /**
+   * v1.4.0: Check if currently recording
+   */
+  isRecording(): boolean {
+    return this.mediaRecorder?.state === 'recording'
+  }
+
+  /**
+   * v1.4.0: Get recording duration in seconds
+   */
+  getRecordingDuration(): number {
+    if (!this.recordingStartTime || !this.isRecording()) {
+      return 0
+    }
+    return Math.floor((Date.now() - this.recordingStartTime) / 1000)
+  }
+
+  /**
+   * v1.4.0: Get supported MIME type for recording
+   */
+  private getSupportedMimeType(): string {
+    const types = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=h264,opus',
+      'video/webm',
+      'video/mp4'
+    ]
+
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        return type
+      }
+    }
+
+    // Fallback
+    return 'video/webm'
   }
 } 

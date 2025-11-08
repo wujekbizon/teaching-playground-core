@@ -5,6 +5,107 @@ All notable changes to the Teaching Playground Core package will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2025-11-08
+
+### 🎬 Teaching Features - Lecture Recording
+
+This release adds client-side lecture recording using the MediaRecorder API, enabling teachers to record and save their lectures.
+
+### Added
+
+#### Client-Side Recording Methods (RoomConnection)
+- **`startRecording(stream, options?)`** - Start recording lecture (teacher/admin only)
+  - Records provided MediaStream (screen share or camera)
+  - Automatic MIME type detection (VP9/VP8/H264)
+  - Configurable video bitrate (default: 2.5 Mbps)
+  - Collects data chunks every second
+  - Emits `recording_started` event
+- **`stopRecording()`** - Stop recording and generate blob
+  - Stops MediaRecorder
+  - Emits `recording_stopped` event with blob, duration, and size
+  - Automatic duration calculation
+- **`isRecording()`** - Check if currently recording
+  - Returns boolean recording state
+- **`getRecordingDuration()`** - Get current recording duration in seconds
+  - Real-time duration tracking while recording
+
+#### Server-Side Notification Handlers (RealTimeCommunicationSystem)
+- **Recording notification events** - Broadcast recording state to all participants
+  - `recording_started` → broadcasts `lecture_recording_started`
+  - `recording_stopped` → broadcasts `lecture_recording_stopped` with duration
+  - Room-scoped notifications (only participants in the room are notified)
+
+#### New Events
+**Client → Server:**
+```typescript
+socket.emit('recording_started', {
+  roomId: string
+  teacherId: string
+})
+
+socket.emit('recording_stopped', {
+  roomId: string
+  teacherId: string
+  duration: number // seconds
+})
+```
+
+**Server → Client:**
+```typescript
+connection.on('recording_started', ({ timestamp }) => {
+  // Local event - recording started successfully
+})
+
+connection.on('recording_stopped', ({ blob, duration, size, mimeType, timestamp }) => {
+  // Local event - recording stopped, blob ready for download
+})
+
+connection.on('lecture_recording_started', ({ teacherId, timestamp }) => {
+  // Notification - teacher started recording (shown to students)
+})
+
+connection.on('lecture_recording_stopped', ({ teacherId, duration, timestamp }) => {
+  // Notification - teacher stopped recording (shown to students)
+})
+```
+
+### Testing
+
+**Comprehensive test coverage added (147 tests total, 100% passing):**
+- 19 client-side recording tests (RoomConnection.recording.test.ts)
+- 9 server-side notification tests (RealTimeCommunicationSystem.recording.test.ts)
+- All existing 118 tests continue passing
+
+### Frontend Integration
+
+**Example Usage:**
+```typescript
+// Start recording
+await connection.startRecording(screenShareStream)
+
+// Stop recording
+connection.stopRecording()
+
+// Handle recording stopped event
+connection.on('recording_stopped', ({ blob, duration }) => {
+  // Download the recording
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `lecture-${Date.now()}.webm`
+  a.click()
+  URL.revokeObjectURL(url)
+})
+```
+
+### Notes
+
+- **Client-side recording:** Recording happens in the browser, no server processing required
+- **Teacher/Admin only:** Only teachers and admins can record lectures
+- **Automatic MIME type detection:** Supports WebM (VP9/VP8/H264) and MP4
+- **Room notifications:** All participants see recording status
+- **Cloud upload ready:** Blob can be uploaded to cloud storage after recording
+
 ## [1.3.1] - 2025-11-08
 
 ### 🎓 Teaching Features - Participant Controls

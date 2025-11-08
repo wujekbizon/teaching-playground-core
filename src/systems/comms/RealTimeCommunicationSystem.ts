@@ -204,6 +204,38 @@ export class RealTimeCommunicationSystem extends EventEmitter {
         }
       })
 
+      // v1.4.0: Recording notification events
+      socket.on('recording_started', (data: { roomId: string; teacherId: string }) => {
+        try {
+          // Notify all participants in the room
+          if (this.io) {
+            this.io.to(data.roomId).emit('lecture_recording_started', {
+              teacherId: data.teacherId,
+              timestamp: new Date().toISOString()
+            })
+          }
+          console.log(`Recording started in room ${data.roomId} by teacher ${data.teacherId}`)
+        } catch (error) {
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to notify recording start' })
+        }
+      })
+
+      socket.on('recording_stopped', (data: { roomId: string; teacherId: string; duration: number }) => {
+        try {
+          // Notify all participants in the room
+          if (this.io) {
+            this.io.to(data.roomId).emit('lecture_recording_stopped', {
+              teacherId: data.teacherId,
+              duration: data.duration,
+              timestamp: new Date().toISOString()
+            })
+          }
+          console.log(`Recording stopped in room ${data.roomId} by teacher ${data.teacherId} (duration: ${data.duration}s)`)
+        } catch (error) {
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to notify recording stop' })
+        }
+      })
+
       socket.on('disconnect', () => {
         this.handleDisconnect(socket)
       })
