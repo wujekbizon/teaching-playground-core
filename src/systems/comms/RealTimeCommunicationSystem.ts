@@ -32,6 +32,8 @@ interface RoomParticipant {
   canChat: boolean
   canScreenShare: boolean
   isStreaming: boolean
+  handRaised: boolean // v1.3.1: Hand raise feature
+  handRaisedAt?: string // v1.3.1: Timestamp when hand was raised
 }
 
 interface RateLimitEntry {
@@ -161,6 +163,47 @@ export class RealTimeCommunicationSystem extends EventEmitter {
         this.handleWebRTCIceCandidate(socket, data)
       })
 
+      // v1.3.1: Participant control events
+      socket.on('mute_all_participants', (data: { roomId: string; requesterId: string }) => {
+        try {
+          this.muteAllParticipants(data.roomId, data.requesterId)
+        } catch (error) {
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to mute all participants' })
+        }
+      })
+
+      socket.on('mute_participant', (data: { roomId: string; targetUserId: string; requesterId: string }) => {
+        try {
+          this.muteParticipant(data.roomId, data.targetUserId, data.requesterId)
+        } catch (error) {
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to mute participant' })
+        }
+      })
+
+      socket.on('kick_participant', (data: { roomId: string; targetUserId: string; requesterId: string; reason?: string }) => {
+        try {
+          this.kickParticipant(data.roomId, data.targetUserId, data.requesterId, data.reason)
+        } catch (error) {
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to kick participant' })
+        }
+      })
+
+      socket.on('raise_hand', (data: { roomId: string; userId: string }) => {
+        try {
+          this.raiseHand(data.roomId, data.userId)
+        } catch (error) {
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to raise hand' })
+        }
+      })
+
+      socket.on('lower_hand', (data: { roomId: string; userId: string }) => {
+        try {
+          this.lowerHand(data.roomId, data.userId)
+        } catch (error) {
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to lower hand' })
+        }
+      })
+
       socket.on('disconnect', () => {
         this.handleDisconnect(socket)
       })
@@ -187,7 +230,8 @@ export class RealTimeCommunicationSystem extends EventEmitter {
         canStream: user.role === 'teacher',
         canChat: true,
         canScreenShare: user.role === 'teacher',
-        isStreaming: false
+        isStreaming: false,
+        handRaised: false // v1.3.1: Initialize hand raise state
       }
 
       this.rooms.get(roomId)!.set(socket.id, participant)
@@ -533,6 +577,172 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       console.error(`Failed to clear room ${roomId}:`, error)
       throw new SystemError('ROOM_CLEAR_FAILED', 'Failed to clear room data')
     }
+  }
+
+  /**
+   * v1.3.1: Mute all participants in a room (teacher only)
+   */
+  muteAllParticipants(roomId: string, requesterId: string): void {
+    const participants = this.rooms.get(roomId)
+    if (!participants) {
+      throw new SystemError('ROOM_NOT_FOUND', `Room ${roomId} not found`)
+    }
+
+    // Verify requester is teacher/admin
+    const requester = Array.from(participants.values()).find(p => p.id === requesterId)
+    if (!requester || (requester.role !== 'teacher' && requester.role !== 'admin')) {
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers can mute all participants')
+    }
+
+    // Emit to all participants in the room
+    if (this.io) {
+      this.io.to(roomId).emit('mute_all', {
+        requestedBy: requesterId,
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    console.log(`All participants muted in room ${roomId} by ${requesterId}`)
+  }
+
+  /**
+   * v1.3.1: Mute specific participant (teacher only)
+   */
+  muteParticipant(roomId: string, targetUserId: string, requesterId: string): void {
+    const participants = this.rooms.get(roomId)
+    if (!participants) {
+      throw new SystemError('ROOM_NOT_FOUND', `Room ${roomId} not found`)
+    }
+
+    // Verify requester is teacher/admin
+    const requester = Array.from(participants.values()).find(p => p.id === requesterId)
+    if (!requester || (requester.role !== 'teacher' && requester.role !== 'admin')) {
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers can mute participants')
+    }
+
+    // Find target participant's socket
+    const targetParticipant = Array.from(participants.values()).find(p => p.id === targetUserId)
+    if (!targetParticipant) {
+      throw new SystemError('PARTICIPANT_NOT_FOUND', `Participant ${targetUserId} not found`)
+    }
+
+    // Emit to specific participant
+    if (this.io) {
+      this.io.to(targetParticipant.socketId).emit('muted_by_teacher', {
+        requestedBy: requesterId,
+        reason: 'Muted by instructor',
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    console.log(`Participant ${targetUserId} muted in room ${roomId}`)
+  }
+
+  /**
+   * v1.3.1: Kick participant from room (teacher/admin only)
+   */
+  kickParticipant(
+    roomId: string,
+    targetUserId: string,
+    requesterId: string,
+    reason?: string
+  ): void {
+    const participants = this.rooms.get(roomId)
+    if (!participants) {
+      throw new SystemError('ROOM_NOT_FOUND', `Room ${roomId} not found`)
+    }
+
+    // Verify requester is teacher/admin
+    const requester = Array.from(participants.values()).find(p => p.id === requesterId)
+    if (!requester || (requester.role !== 'teacher' && requester.role !== 'admin')) {
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers can kick participants')
+    }
+
+    // Find target participant
+    const targetParticipant = Array.from(participants.values()).find(p => p.id === targetUserId)
+    if (!targetParticipant) {
+      throw new SystemError('PARTICIPANT_NOT_FOUND', `Participant ${targetUserId} not found`)
+    }
+
+    // Emit kick event to target
+    if (this.io) {
+      this.io.to(targetParticipant.socketId).emit('kicked_from_room', {
+        roomId,
+        reason: reason || 'Removed by instructor',
+        kickedBy: requesterId,
+        timestamp: new Date().toISOString()
+      })
+
+      // Notify others in the room
+      this.io.to(roomId).emit('participant_kicked', {
+        userId: targetUserId,
+        reason: reason || 'Removed by instructor'
+      })
+    }
+
+    // Remove from participants
+    participants.delete(targetParticipant.socketId)
+
+    console.log(`Participant ${targetUserId} kicked from room ${roomId}`)
+  }
+
+  /**
+   * v1.3.1: Raise hand
+   */
+  raiseHand(roomId: string, userId: string): void {
+    const participants = this.rooms.get(roomId)
+    if (!participants) {
+      throw new SystemError('ROOM_NOT_FOUND', `Room ${roomId} not found`)
+    }
+
+    const participant = Array.from(participants.values()).find(p => p.id === userId)
+    if (!participant) {
+      throw new SystemError('PARTICIPANT_NOT_FOUND', `Participant ${userId} not found`)
+    }
+
+    // Update participant state
+    participant.handRaised = true
+    participant.handRaisedAt = new Date().toISOString()
+
+    // Broadcast to room
+    if (this.io) {
+      this.io.to(roomId).emit('hand_raised', {
+        userId,
+        username: participant.username,
+        timestamp: participant.handRaisedAt
+      })
+    }
+
+    console.log(`Hand raised by ${userId} in room ${roomId}`)
+  }
+
+  /**
+   * v1.3.1: Lower hand
+   */
+  lowerHand(roomId: string, userId: string): void {
+    const participants = this.rooms.get(roomId)
+    if (!participants) {
+      throw new SystemError('ROOM_NOT_FOUND', `Room ${roomId} not found`)
+    }
+
+    const participant = Array.from(participants.values()).find(p => p.id === userId)
+    if (!participant) {
+      throw new SystemError('PARTICIPANT_NOT_FOUND', `Participant ${userId} not found`)
+    }
+
+    // Update participant state
+    participant.handRaised = false
+    participant.handRaisedAt = undefined
+
+    // Broadcast to room
+    if (this.io) {
+      this.io.to(roomId).emit('hand_lowered', {
+        userId,
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    console.log(`Hand lowered by ${userId} in room ${roomId}`)
   }
 
   async shutdown(): Promise<void> {

@@ -269,6 +269,39 @@ export class RoomConnection extends EventEmitter {
       this.emit('server_shutdown', data)
     })
 
+    // v1.3.1: Participant control events
+    this.socket.on('mute_all', (data: { requestedBy: string; timestamp: string }) => {
+      console.log('Mute all requested by:', data.requestedBy)
+      this.emit('mute_all', data)
+    })
+
+    this.socket.on('muted_by_teacher', (data: { requestedBy: string; reason: string; timestamp: string }) => {
+      console.log('Muted by teacher:', data)
+      this.emit('muted_by_teacher', data)
+    })
+
+    this.socket.on('kicked_from_room', (data: { roomId: string; reason: string; kickedBy: string; timestamp: string }) => {
+      console.log('Kicked from room:', data)
+      this.emit('kicked_from_room', data)
+      // Automatically disconnect when kicked
+      this.disconnect()
+    })
+
+    this.socket.on('participant_kicked', (data: { userId: string; reason: string }) => {
+      console.log('Participant kicked:', data)
+      this.emit('participant_kicked', data)
+    })
+
+    this.socket.on('hand_raised', (data: { userId: string; username: string; timestamp: string }) => {
+      console.log('Hand raised:', data)
+      this.emit('hand_raised', data)
+    })
+
+    this.socket.on('hand_lowered', (data: { userId: string; timestamp: string }) => {
+      console.log('Hand lowered:', data)
+      this.emit('hand_lowered', data)
+    })
+
     this.socket.on('error', (error) => {
       console.error('Socket error:', error)
       this.emit('error', error)
@@ -689,5 +722,104 @@ export class RoomConnection extends EventEmitter {
    */
   isScreenSharing(): boolean {
     return this.screenShareStream !== null
+  }
+
+  /**
+   * v1.3.1: Mute all participants (teacher/admin only)
+   * Emits mute_all_participants event to server
+   */
+  muteAllParticipants(): void {
+    if (this.user.role !== 'teacher' && this.user.role !== 'admin') {
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers/admins can mute all participants')
+    }
+
+    if (!this.isConnected || !this.socket) {
+      throw new SystemError('NOT_CONNECTED', 'Cannot mute participants: not connected')
+    }
+
+    this.socket.emit('mute_all_participants', {
+      roomId: this.roomId,
+      requesterId: this.user.id
+    })
+
+    console.log('Mute all participants requested')
+  }
+
+  /**
+   * v1.3.1: Mute specific participant (teacher/admin only)
+   * @param userId - User ID of participant to mute
+   */
+  muteParticipant(userId: string): void {
+    if (this.user.role !== 'teacher' && this.user.role !== 'admin') {
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers/admins can mute participants')
+    }
+
+    if (!this.isConnected || !this.socket) {
+      throw new SystemError('NOT_CONNECTED', 'Cannot mute participant: not connected')
+    }
+
+    this.socket.emit('mute_participant', {
+      roomId: this.roomId,
+      targetUserId: userId,
+      requesterId: this.user.id
+    })
+
+    console.log(`Mute participant requested: ${userId}`)
+  }
+
+  /**
+   * v1.3.1: Kick participant from room (teacher/admin only)
+   * @param userId - User ID of participant to kick
+   * @param reason - Optional reason for kicking
+   */
+  kickParticipant(userId: string, reason?: string): void {
+    if (this.user.role !== 'teacher' && this.user.role !== 'admin') {
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers/admins can kick participants')
+    }
+
+    if (!this.isConnected || !this.socket) {
+      throw new SystemError('NOT_CONNECTED', 'Cannot kick participant: not connected')
+    }
+
+    this.socket.emit('kick_participant', {
+      roomId: this.roomId,
+      targetUserId: userId,
+      requesterId: this.user.id,
+      reason
+    })
+
+    console.log(`Kick participant requested: ${userId}`)
+  }
+
+  /**
+   * v1.3.1: Raise hand to ask question
+   */
+  raiseHand(): void {
+    if (!this.isConnected || !this.socket) {
+      throw new SystemError('NOT_CONNECTED', 'Cannot raise hand: not connected')
+    }
+
+    this.socket.emit('raise_hand', {
+      roomId: this.roomId,
+      userId: this.user.id
+    })
+
+    console.log('Hand raised')
+  }
+
+  /**
+   * v1.3.1: Lower hand
+   */
+  lowerHand(): void {
+    if (!this.isConnected || !this.socket) {
+      throw new SystemError('NOT_CONNECTED', 'Cannot lower hand: not connected')
+    }
+
+    this.socket.emit('lower_hand', {
+      roomId: this.roomId,
+      userId: this.user.id
+    })
+
+    console.log('Hand lowered')
   }
 } 

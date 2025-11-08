@@ -5,6 +5,131 @@ All notable changes to the Teaching Playground Core package will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2025-11-08
+
+### 🎓 Teaching Features - Participant Controls
+
+This release adds essential classroom management features for teachers and administrators.
+
+### Added
+
+#### Server-Side Methods (RealTimeCommunicationSystem)
+- **`muteAllParticipants(roomId, requesterId)`** - Teacher/admin can mute all participants
+  - Permission check: Only teachers and admins allowed
+  - Emits `mute_all` event to all room participants
+- **`muteParticipant(roomId, targetUserId, requesterId)`** - Teacher/admin can mute specific participant
+  - Permission check: Only teachers and admins allowed
+  - Emits `muted_by_teacher` event to target participant
+- **`kickParticipant(roomId, targetUserId, requesterId, reason?)`** - Teacher/admin can remove disruptive participants
+  - Permission check: Only teachers and admins allowed
+  - Emits `kicked_from_room` event to target and `participant_kicked` to room
+  - Automatically removes participant from room
+- **`raiseHand(roomId, userId)`** - Students can raise hand to ask questions
+  - Updates participant state with `handRaised: true` and timestamp
+  - Emits `hand_raised` event to room
+- **`lowerHand(roomId, userId)`** - Students can lower hand
+  - Updates participant state with `handRaised: false`
+  - Emits `hand_lowered` event to room
+
+#### Client-Side Methods (RoomConnection)
+- **`connection.muteAllParticipants()`** - Teacher calls to mute all participants
+- **`connection.muteParticipant(userId)`** - Teacher calls to mute specific participant
+- **`connection.kickParticipant(userId, reason?)`** - Teacher calls to kick participant
+- **`connection.raiseHand()`** - Student calls to raise hand
+- **`connection.lowerHand()`** - Student calls to lower hand
+
+#### New Events
+**Server → Client:**
+```typescript
+connection.on('mute_all', ({ requestedBy, timestamp }) => {
+  // All participants should mute themselves
+})
+
+connection.on('muted_by_teacher', ({ requestedBy, reason, timestamp }) => {
+  // You were muted by teacher
+})
+
+connection.on('kicked_from_room', ({ roomId, reason, kickedBy, timestamp }) => {
+  // You were removed from room (automatically disconnects)
+})
+
+connection.on('participant_kicked', ({ userId, reason }) => {
+  // Another participant was kicked (notification)
+})
+
+connection.on('hand_raised', ({ userId, username, timestamp }) => {
+  // Participant raised hand
+})
+
+connection.on('hand_lowered', ({ userId, timestamp }) => {
+  // Participant lowered hand
+})
+```
+
+### Changed
+
+- **RoomParticipant interface** - Added `handRaised: boolean` and `handRaisedAt?: string` fields
+- Participants now initialize with `handRaised: false` when joining rooms
+
+### Testing
+
+**Comprehensive test coverage added (118 tests total, 100% passing):**
+- 22 client-side participant control tests (RoomConnection.participantControls.test.ts)
+- 23 server-side participant control tests (RealTimeCommunicationSystem.participantControls.test.ts)
+- All existing 73 tests continue passing
+
+**Test coverage:**
+- Permission checks (teacher/admin only for mute/kick)
+- Event emission and broadcasting
+- Error handling (room not found, participant not found, permission denied)
+- State management (hand raise/lower updates)
+- Auto-disconnect on kick
+
+### Frontend Integration
+
+**Example Usage:**
+```typescript
+// Teacher mutes all students
+<button onClick={() => connection.muteAllParticipants()}>
+  Mute All
+</button>
+
+// Teacher mutes specific student
+<button onClick={() => connection.muteParticipant(studentId)}>
+  Mute Student
+</button>
+
+// Teacher kicks disruptive student
+<button onClick={() => connection.kickParticipant(studentId, 'Disruptive behavior')}>
+  Remove Student
+</button>
+
+// Student raises hand
+<button onClick={() => connection.raiseHand()}>
+  ✋ Raise Hand
+</button>
+
+// Listen for hand raised events
+connection.on('hand_raised', ({ userId, username, timestamp }) => {
+  // Show hand raise indicator for this user
+  showHandRaiseIndicator(userId, username)
+})
+
+// Listen for mute events
+connection.on('mute_all', () => {
+  // Disable microphone
+  localStream.getAudioTracks()[0].enabled = false
+})
+```
+
+### Notes
+
+- **Permission-based:** Only teachers and admins can mute or kick participants
+- **Anyone can raise hand:** Students and teachers can both raise/lower hands
+- **Auto-disconnect on kick:** Kicked participants are automatically disconnected
+- **State tracking:** Hand raise state is maintained in participant object
+- **Broadcast events:** All room participants receive notifications of state changes
+
 ## [1.2.0] - 2025-11-08
 
 ### 🎥 Major Features - WebRTC Media Streaming & Screen Sharing
