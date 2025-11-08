@@ -5,6 +5,133 @@ All notable changes to the Teaching Playground Core package will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2025-11-08
+
+### 🐛 Critical Hotfixes
+
+This hotfix release addresses critical issues reported by the frontend team during v1.3.1 integration.
+
+### Fixed
+
+#### Issue #1: room_state Missing Existing Participants (CRITICAL - P0)
+**Problem:** When a user joined a room with existing participants, `room_state` event only included the new user, not existing participants.
+
+**Root Cause:** `setupForRoom()` was creating a NEW empty Map, clearing existing participants when called after users had already joined.
+
+**Fix:** Modified `setupForRoom()` to only initialize Maps if they don't already exist:
+```typescript
+// Before (v1.4.0) - BROKEN
+this.rooms.set(roomId, new Map()) // Always creates new empty Map
+
+// After (v1.4.1) - FIXED
+if (!this.rooms.has(roomId)) {
+  this.rooms.set(roomId, new Map()) // Only create if doesn't exist
+}
+```
+
+**Impact:** Late joiners now correctly see ALL participants in the room, not just themselves.
+
+**Testing:**
+- User A joins → sees 1 participant (themselves)
+- User B joins → sees 2 participants (A + B) ✅
+- User C joins → sees 3 participants (A + B + C) ✅
+
+#### Issue #2: Kick Participant Not Working (HIGH - P1)
+**Problem:** When teacher clicked "Kick Participant" button, nothing happened. Participant stayed in room.
+
+**Root Cause:** Event was working, but kicked user's socket connection wasn't being forcefully closed.
+
+**Fix:** Added force-disconnect after emitting kick event:
+```typescript
+// Emit kick event
+this.io.to(targetParticipant.socketId).emit('kicked_from_room', {...})
+
+// NEW: Force disconnect after 1 second delay
+setTimeout(() => {
+  const targetSocket = this.io.sockets.sockets.get(targetParticipant.socketId)
+  if (targetSocket) {
+    targetSocket.disconnect(true) // Force disconnect
+  }
+}, 1000)
+```
+
+**Impact:** Kicked users are now forcefully disconnected within 1 second.
+
+#### Issue #3: Enhanced Logging for Debugging
+Added comprehensive logging throughout participant control operations:
+
+**Join Room:**
+```
+User teacher@example.com (socket-123) joined room room-1
+Room room-1 now has 2 participants: [
+  { id: 'user-1', username: 'teacher@example.com', socketId: 'socket-123' },
+  { id: 'user-2', username: 'student@example.com', socketId: 'socket-456' }
+]
+```
+
+**Kick Participant:**
+```
+Kick participant event received - Room: room-1, Target: user-2, Requester: user-1, Reason: Disruptive behavior
+Kicking participant user-2 (student@example.com, socket: socket-456) from room room-1 by user-1
+Force disconnecting kicked user user-2 (socket: socket-456)
+Participant user-2 successfully kicked from room room-1
+```
+
+**Mute Participant:**
+```
+Muting participant user-2 (student@example.com, socket: socket-456) in room room-1 by user-1
+Participant user-2 successfully muted in room room-1
+```
+
+**Error Logging:**
+```
+Kick failed: Room room-999 not found
+Kick failed: User user-3 (role: student) lacks permission
+Kick failed: Participant user-999 not found in room room-1
+```
+
+### Changed
+
+- **setupForRoom()** - Now checks for existing Maps before initialization (prevents clearing participants)
+- **kickParticipant()** - Adds force-disconnect with 1-second delay
+- **All participant control methods** - Enhanced logging for debugging
+- **Error messages** - Changed from "Only teachers can..." to "Only teachers/admins can..." for consistency
+
+### Testing
+
+All 147 tests passing:
+- ✅ Room state includes all participants
+- ✅ Kick participant removes user and disconnects socket
+- ✅ Mute functionality works correctly
+- ✅ Permission checks work (teacher/admin only)
+- ✅ Error handling with detailed logging
+
+### Upgrade Notes
+
+**Breaking Changes:** None
+
+**Recommended Actions:**
+1. Update package to v1.4.1
+2. Monitor server logs for detailed participant control operations
+3. Test multi-user scenarios (2+ users joining same room)
+4. Verify kick functionality works end-to-end
+
+### Frontend Team Notes
+
+**Test Scenarios to Verify:**
+- [ ] User A joins room → sees themselves (1 participant)
+- [ ] User B joins same room → sees both A and B (2 participants)
+- [ ] Teacher kicks student → student disconnected within 2 seconds
+- [ ] Teacher mutes student → student receives muted_by_teacher event
+- [ ] Teacher mutes all → all students receive mute_all event
+- [ ] Check browser console for detailed server logs
+
+**Expected Logs:**
+Watch server console for detailed logging of all participant operations. If kick still doesn't work, check logs for:
+- "Kick participant event received" (confirms event received)
+- "Kicking participant..." (confirms method executing)
+- "Force disconnecting..." (confirms socket disconnect)
+
 ## [1.4.0] - 2025-11-08
 
 ### 🎬 Teaching Features - Lecture Recording

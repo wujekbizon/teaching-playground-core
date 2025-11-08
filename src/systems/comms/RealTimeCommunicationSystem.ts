@@ -182,8 +182,11 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
       socket.on('kick_participant', (data: { roomId: string; targetUserId: string; requesterId: string; reason?: string }) => {
         try {
+          // v1.4.1: Enhanced logging for debugging
+          console.log(`Kick participant event received - Room: ${data.roomId}, Target: ${data.targetUserId}, Requester: ${data.requesterId}, Reason: ${data.reason || 'none'}`)
           this.kickParticipant(data.roomId, data.targetUserId, data.requesterId, data.reason)
         } catch (error) {
+          console.error('Error kicking participant:', error)
           socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to kick participant' })
         }
       })
@@ -275,15 +278,18 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       })
 
       // Send room state WITHOUT messages (separate history)
+      const allParticipants = Array.from(this.rooms.get(roomId)!.values())
       socket.emit('room_state', {
         stream: this.streams.get(roomId) || { isActive: false, streamerId: null, quality: 'high' },
-        participants: Array.from(this.rooms.get(roomId)!.values())
+        participants: allParticipants
       })
+
+      // v1.4.1: Enhanced logging for debugging
+      console.log(`User ${user.username} (${socket.id}) joined room ${roomId}`)
+      console.log(`Room ${roomId} now has ${allParticipants.length} participants:`, allParticipants.map(p => ({ id: p.id, username: p.username, socketId: p.socketId })))
 
       // Notify others with full participant object
       socket.to(roomId).emit('user_joined', participant)
-
-      console.log(`User ${user.username} joined room ${roomId}`)
     } catch (error) {
       console.error('Error in handleJoinRoom:', error)
       socket.emit('error', { message: 'Failed to join room' })
@@ -484,9 +490,18 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     try {
       if (!this.io) throw new SystemError('COMMS_NOT_INITIALIZED', 'Communication system not initialized')
 
-      this.rooms.set(roomId, new Map())
-      this.messages.set(roomId, [])
-      this.messageSequence.set(roomId, 0)
+      // v1.4.1 HOTFIX: Only initialize if room doesn't exist
+      // This prevents clearing existing participants when room is created in database
+      if (!this.rooms.has(roomId)) {
+        this.rooms.set(roomId, new Map())
+      }
+      if (!this.messages.has(roomId)) {
+        this.messages.set(roomId, [])
+      }
+      if (!this.messageSequence.has(roomId)) {
+        this.messageSequence.set(roomId, 0)
+      }
+
       this.updateRoomActivity(roomId)
       console.log(`Communication setup for room: ${roomId}`)
     } catch (error) {
@@ -617,14 +632,18 @@ export class RealTimeCommunicationSystem extends EventEmitter {
   muteAllParticipants(roomId: string, requesterId: string): void {
     const participants = this.rooms.get(roomId)
     if (!participants) {
+      console.error(`Mute all failed: Room ${roomId} not found`)
       throw new SystemError('ROOM_NOT_FOUND', `Room ${roomId} not found`)
     }
 
     // Verify requester is teacher/admin
     const requester = Array.from(participants.values()).find(p => p.id === requesterId)
     if (!requester || (requester.role !== 'teacher' && requester.role !== 'admin')) {
-      throw new SystemError('PERMISSION_DENIED', 'Only teachers can mute all participants')
+      console.error(`Mute all failed: User ${requesterId} (role: ${requester?.role || 'unknown'}) lacks permission`)
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers/admins can mute all participants')
     }
+
+    console.log(`Muting all participants in room ${roomId} by ${requesterId} (${requester.username})`)
 
     // Emit to all participants in the room
     if (this.io) {
@@ -643,20 +662,25 @@ export class RealTimeCommunicationSystem extends EventEmitter {
   muteParticipant(roomId: string, targetUserId: string, requesterId: string): void {
     const participants = this.rooms.get(roomId)
     if (!participants) {
+      console.error(`Mute participant failed: Room ${roomId} not found`)
       throw new SystemError('ROOM_NOT_FOUND', `Room ${roomId} not found`)
     }
 
     // Verify requester is teacher/admin
     const requester = Array.from(participants.values()).find(p => p.id === requesterId)
     if (!requester || (requester.role !== 'teacher' && requester.role !== 'admin')) {
-      throw new SystemError('PERMISSION_DENIED', 'Only teachers can mute participants')
+      console.error(`Mute participant failed: User ${requesterId} (role: ${requester?.role || 'unknown'}) lacks permission`)
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers/admins can mute participants')
     }
 
     // Find target participant's socket
     const targetParticipant = Array.from(participants.values()).find(p => p.id === targetUserId)
     if (!targetParticipant) {
+      console.error(`Mute participant failed: Participant ${targetUserId} not found in room ${roomId}`)
       throw new SystemError('PARTICIPANT_NOT_FOUND', `Participant ${targetUserId} not found`)
     }
+
+    console.log(`Muting participant ${targetUserId} (${targetParticipant.username}, socket: ${targetParticipant.socketId}) in room ${roomId} by ${requesterId}`)
 
     // Emit to specific participant
     if (this.io) {
@@ -667,7 +691,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       })
     }
 
-    console.log(`Participant ${targetUserId} muted in room ${roomId}`)
+    console.log(`Participant ${targetUserId} successfully muted in room ${roomId}`)
   }
 
   /**
@@ -681,20 +705,25 @@ export class RealTimeCommunicationSystem extends EventEmitter {
   ): void {
     const participants = this.rooms.get(roomId)
     if (!participants) {
+      console.error(`Kick failed: Room ${roomId} not found`)
       throw new SystemError('ROOM_NOT_FOUND', `Room ${roomId} not found`)
     }
 
     // Verify requester is teacher/admin
     const requester = Array.from(participants.values()).find(p => p.id === requesterId)
     if (!requester || (requester.role !== 'teacher' && requester.role !== 'admin')) {
-      throw new SystemError('PERMISSION_DENIED', 'Only teachers can kick participants')
+      console.error(`Kick failed: User ${requesterId} (role: ${requester?.role || 'unknown'}) lacks permission`)
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers/admins can kick participants')
     }
 
     // Find target participant
     const targetParticipant = Array.from(participants.values()).find(p => p.id === targetUserId)
     if (!targetParticipant) {
+      console.error(`Kick failed: Participant ${targetUserId} not found in room ${roomId}`)
       throw new SystemError('PARTICIPANT_NOT_FOUND', `Participant ${targetUserId} not found`)
     }
+
+    console.log(`Kicking participant ${targetUserId} (${targetParticipant.username}, socket: ${targetParticipant.socketId}) from room ${roomId} by ${requesterId}`)
 
     // Emit kick event to target
     if (this.io) {
@@ -710,12 +739,23 @@ export class RealTimeCommunicationSystem extends EventEmitter {
         userId: targetUserId,
         reason: reason || 'Removed by instructor'
       })
+
+      // v1.4.1 HOTFIX: Force disconnect the kicked user's socket after a short delay
+      // This ensures they are actually removed even if client doesn't handle the event
+      setTimeout(() => {
+        const sockets = this.io!.sockets.sockets
+        const targetSocket = sockets.get(targetParticipant.socketId)
+        if (targetSocket) {
+          console.log(`Force disconnecting kicked user ${targetUserId} (socket: ${targetParticipant.socketId})`)
+          targetSocket.disconnect(true)
+        }
+      }, 1000) // 1 second delay to let the event be received first
     }
 
     // Remove from participants
     participants.delete(targetParticipant.socketId)
 
-    console.log(`Participant ${targetUserId} kicked from room ${roomId}`)
+    console.log(`Participant ${targetUserId} successfully kicked from room ${roomId}`)
   }
 
   /**

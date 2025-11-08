@@ -109,7 +109,7 @@ describe('RealTimeCommunicationSystem - Participant Controls (v1.3.1)', () => {
 
       expect(() => {
         commsSystem.muteAllParticipants('room-1', 'student-1')
-      }).toThrow('Only teachers can mute all participants')
+      }).toThrow('Only teachers/admins can mute all participants')
     })
 
     it('should throw error when room does not exist', () => {
@@ -167,7 +167,7 @@ describe('RealTimeCommunicationSystem - Participant Controls (v1.3.1)', () => {
 
       expect(() => {
         commsSystem.muteParticipant('room-1', 'teacher-1', 'student-1')
-      }).toThrow('Only teachers can mute participants')
+      }).toThrow('Only teachers/admins can mute participants')
     })
 
     it('should throw error when target participant not found', () => {
