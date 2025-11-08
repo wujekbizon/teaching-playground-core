@@ -49,7 +49,8 @@ export interface Room {
   capacity: number
   status: 'available' | 'occupied' | 'scheduled' | 'maintenance'
   features: RoomFeatures
-  participants: RoomParticipant[]
+  // NOTE: participants are NOT stored in database
+  // They only exist in RealTimeCommunicationSystem memory (WebSocket)
   currentLecture?: {
     id: string
     name: string

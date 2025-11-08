@@ -283,11 +283,16 @@ export class RoomConnection extends EventEmitter {
     }
 
     console.log('Starting stream with quality:', quality)
-    
+
     // Emit a stream_status_change event before sending to the server
     this.emit('stream_status_change', { isStreaming: true, userId: this.user.id, username: this.user.username });
 
-    this.socket.emit('start_stream', this.roomId, this.user.username, quality)
+    // Send as object (v1.1.2 API)
+    this.socket.emit('start_stream', {
+      roomId: this.roomId,
+      username: this.user.username,
+      quality
+    })
 
     // Set up WebRTC for each peer in the room
     console.log('Setting up WebRTC for peers:', Array.from(this.connectedPeers))

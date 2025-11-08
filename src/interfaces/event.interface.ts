@@ -32,13 +32,8 @@ export interface Lecture {
         }
       }
     | undefined
-  participants?:
-    | {
-        id: string
-        role: 'teacher' | 'student'
-        status: 'online' | 'offline'
-      }[]
-    | undefined
+  // NOTE: participants are NOT stored in database
+  // They only exist in RealTimeCommunicationSystem memory (WebSocket)
   metadata?:
     | {
         createdAt: string

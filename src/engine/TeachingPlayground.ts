@@ -182,17 +182,14 @@ export default class TeachingPlayground {
     try {
       const lecture = await this.eventSystem.getEvent(lectureId)
       const commsStatus = await this.commsSystem.getResourceStatus(lectureId)
-      const participants = (await this.roomSystem.getRoomParticipants(lecture.roomId))
-        .map(p => ({
-          id: p.id,
-          role: p.role === 'admin' ? 'teacher' : p.role,
-          status: p.status === 'away' ? 'offline' : p.status
-        }))
+
+      // NOTE: Participants are now stored in RealTimeCommunicationSystem memory only
+      // They are NOT part of the Lecture database schema anymore
+      // Clients should query participants through WebSocket events
 
       return {
         ...lecture,
         communicationStatus: commsStatus,
-        participants,
       }
     } catch (error) {
       console.error('Failed to get lecture details:', error)

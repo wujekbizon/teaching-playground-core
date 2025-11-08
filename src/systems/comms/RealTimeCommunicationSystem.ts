@@ -15,7 +15,7 @@ interface RoomMessage {
 
 interface StreamState {
   isActive: boolean
-  streamerId: string | null
+  streamerId: string | null  // Username of the streamer (for display), not userId
   quality: 'low' | 'medium' | 'high'
 }
 
@@ -140,8 +140,8 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       })
 
       // Stream events
-      socket.on('start_stream', (data: { roomId: string; userId: string; quality: StreamState['quality'] }) => {
-        this.handleStartStream(socket, data.roomId, data.userId, data.quality)
+      socket.on('start_stream', (data: { roomId: string; username: string; quality: StreamState['quality'] }) => {
+        this.handleStartStream(socket, data.roomId, data.username, data.quality)
       })
 
       socket.on('stop_stream', (roomId: string) => {
@@ -308,11 +308,11 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     }
   }
 
-  private handleStartStream(socket: any, roomId: string, userId: string, quality: StreamState['quality']) {
+  private handleStartStream(socket: any, roomId: string, username: string, quality: StreamState['quality']) {
     try {
       const streamState: StreamState = {
         isActive: true,
-        streamerId: userId,
+        streamerId: username,  // Use username for display (not UUID)
         quality
       }
       this.streams.set(roomId, streamState)
@@ -325,7 +325,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
       this.updateRoomActivity(roomId)
       this.io!.to(roomId).emit('stream_started', streamState)
-      console.log(`Stream started in room ${roomId} by ${userId}`)
+      console.log(`Stream started in room ${roomId} by ${username}`)
     } catch (error) {
       console.error('Error in handleStartStream:', error)
       socket.emit('error', { message: 'Failed to start stream' })
@@ -476,6 +476,18 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     } catch (error) {
       throw new SystemError('RESOURCE_STATUS_FAILED', 'Failed to get resource status')
     }
+  }
+
+  /**
+   * Get active participants in a room from WebSocket memory
+   * Returns array of participants currently connected via WebSocket
+   */
+  getRoomParticipants(roomId: string): RoomParticipant[] {
+    const participants = this.rooms.get(roomId)
+    if (!participants) {
+      return []
+    }
+    return Array.from(participants.values())
   }
 
   async shutdown(): Promise<void> {
