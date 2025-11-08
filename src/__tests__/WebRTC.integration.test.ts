@@ -7,29 +7,31 @@ import { RoomConnection } from '../services/RoomConnection'
 import { User } from '../interfaces/user.interface'
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client'
 
-// Mock RTCPeerConnection
-global.RTCPeerConnection = jest.fn().mockImplementation(() => {
-  const pc = {
-    createOffer: jest.fn(),
-    createAnswer: jest.fn(),
-    setLocalDescription: jest.fn(),
-    setRemoteDescription: jest.fn(),
-    addIceCandidate: jest.fn(),
-    addTrack: jest.fn().mockReturnValue({
-      track: null,
-      replaceTrack: jest.fn().mockResolvedValue(undefined)
-    }),
-    getSenders: jest.fn(() => []),
-    close: jest.fn(),
-    localDescription: null,
-    remoteDescription: null,
-    ontrack: null,
-    onicecandidate: null,
-    oniceconnectionstatechange: null,
-    iceConnectionState: 'new'
-  }
-  return pc
-}) as any
+// Mock RTCPeerConnection factory
+const createMockRTCPeerConnection = () => ({
+  createOffer: jest.fn(),
+  createAnswer: jest.fn(),
+  setLocalDescription: jest.fn(),
+  setRemoteDescription: jest.fn(),
+  addIceCandidate: jest.fn(),
+  addTrack: jest.fn().mockReturnValue({
+    track: null,
+    replaceTrack: jest.fn().mockResolvedValue(undefined)
+  }),
+  getSenders: jest.fn(() => []),
+  close: jest.fn(),
+  localDescription: null,
+  remoteDescription: null,
+  ontrack: null,
+  onicecandidate: null,
+  oniceconnectionstatechange: null,
+  iceConnectionState: 'new'
+})
+
+// Initialize global mocks
+global.RTCPeerConnection = jest.fn().mockImplementation(createMockRTCPeerConnection) as any
+global.RTCSessionDescription = jest.fn((init) => init) as any
+global.RTCIceCandidate = jest.fn((init) => init) as any
 
 // Mock WebRTCService factory
 const createMockWebRTCInstance = () => ({
@@ -73,6 +75,9 @@ describe('WebRTC Integration Tests (v1.2.0)', () => {
   let mockLocalStream2: MediaStream
 
   beforeEach(() => {
+    // Recreate RTCPeerConnection mock to avoid reset issues
+    global.RTCPeerConnection = jest.fn().mockImplementation(createMockRTCPeerConnection) as any
+
     // Recreate mock instance to avoid reset issues
     mockWebRTCInstance = createMockWebRTCInstance()
 

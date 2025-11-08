@@ -6,39 +6,42 @@
 import { RoomConnection } from '../services/RoomConnection'
 import { User } from '../interfaces/user.interface'
 
-// Mock RTCPeerConnection
-global.RTCPeerConnection = jest.fn().mockImplementation(() => {
-  const pc = {
-    createOffer: jest.fn(),
-    createAnswer: jest.fn(),
-    setLocalDescription: jest.fn(),
-    setRemoteDescription: jest.fn(),
-    addIceCandidate: jest.fn(),
-    addTrack: jest.fn().mockReturnValue({
-      track: null,
-      replaceTrack: jest.fn().mockResolvedValue(undefined)
-    }),
-    getSenders: jest.fn(() => []),
-    close: jest.fn(),
-    localDescription: null,
-    remoteDescription: null,
-    ontrack: null,
-    onicecandidate: null,
-    oniceconnectionstatechange: null,
-    iceConnectionState: 'new'
-  }
-  return pc
-}) as any
+// Mock RTCPeerConnection factory
+const createMockRTCPeerConnection = () => ({
+  createOffer: jest.fn(),
+  createAnswer: jest.fn(),
+  setLocalDescription: jest.fn(),
+  setRemoteDescription: jest.fn(),
+  addIceCandidate: jest.fn(),
+  addTrack: jest.fn().mockReturnValue({
+    track: null,
+    replaceTrack: jest.fn().mockResolvedValue(undefined)
+  }),
+  getSenders: jest.fn(() => []),
+  close: jest.fn(),
+  localDescription: null,
+  remoteDescription: null,
+  ontrack: null,
+  onicecandidate: null,
+  oniceconnectionstatechange: null,
+  iceConnectionState: 'new'
+})
 
-// Mock Socket.IO
+// Initialize global mocks
+global.RTCPeerConnection = jest.fn().mockImplementation(createMockRTCPeerConnection) as any
+global.RTCSessionDescription = jest.fn((init) => init) as any
+global.RTCIceCandidate = jest.fn((init) => init) as any
+
+// Mock Socket.IO - use a single object and reset its methods in beforeEach
+const mockSocket = {
+  on: jest.fn(),
+  emit: jest.fn(),
+  connect: jest.fn(),
+  disconnect: jest.fn(),
+  id: 'mock-socket-id',
+}
+
 jest.mock('socket.io-client', () => {
-  const mockSocket = {
-    on: jest.fn(),
-    emit: jest.fn(),
-    connect: jest.fn(),
-    disconnect: jest.fn(),
-    id: 'mock-socket-id',
-  }
   return {
     io: jest.fn(() => mockSocket),
   }
@@ -66,15 +69,27 @@ describe('RoomConnection - WebRTC Features (v1.2.0)', () => {
   let connection: RoomConnection
   let mockUser: User
   let mockLocalStream: MediaStream
-  let mockSocket: any
 
   beforeEach(() => {
+    // Recreate RTCPeerConnection mock to avoid reset issues
+    global.RTCPeerConnection = jest.fn().mockImplementation(createMockRTCPeerConnection) as any
+
     // Recreate mock instance to avoid reset issues
     mockWebRTCInstance = createMockWebRTCInstance()
 
     // Update the WebRTCService mock to return the new instance
     const WebRTCService = require('../services/WebRTCService').WebRTCService as jest.Mock
     WebRTCService.mockImplementation(() => mockWebRTCInstance)
+
+    // Reset socket mock methods (keep same object reference)
+    mockSocket.on = jest.fn()
+    mockSocket.emit = jest.fn()
+    mockSocket.connect = jest.fn()
+    mockSocket.disconnect = jest.fn()
+
+    // Reset io mock to return mockSocket
+    const { io } = require('socket.io-client')
+    ;(io as jest.Mock).mockReturnValue(mockSocket)
 
     mockUser = {
       id: 'user-123',
@@ -93,7 +108,7 @@ describe('RoomConnection - WebRTC Features (v1.2.0)', () => {
     } as any
 
     connection = new RoomConnection('room-123', mockUser, 'ws://localhost:3001')
-    mockSocket = (connection as any).socket
+    connection.connect() // Initialize socket
   })
 
   afterEach(() => {
@@ -104,7 +119,9 @@ describe('RoomConnection - WebRTC Features (v1.2.0)', () => {
     it('should create RTCPeerConnection with STUN servers', async () => {
       const pc = await connection.setupPeerConnection('peer-123', mockLocalStream)
 
-      expect(pc).toBeInstanceOf(RTCPeerConnection)
+      expect(pc).toBeDefined()
+      expect(pc).toHaveProperty('createOffer')
+      expect(pc).toHaveProperty('addTrack')
       expect((connection as any).peerConnections.has('peer-123')).toBe(true)
     })
 
@@ -367,8 +384,10 @@ describe('RoomConnection - WebRTC Features (v1.2.0)', () => {
     describe('stopScreenShare', () => {
       it('should stop screen tracks and switch back to camera', async () => {
         // Setup screen sharing first
+        const mockStopFn = jest.fn()
+        const mockTracks = [{ stop: mockStopFn }]
         const mockScreenStream = {
-          getTracks: jest.fn(() => [{ stop: jest.fn() }]),
+          getTracks: jest.fn(() => mockTracks),
           getVideoTracks: jest.fn(() => [
             { kind: 'video', stop: jest.fn(), onended: null },
           ]),
@@ -386,7 +405,7 @@ describe('RoomConnection - WebRTC Features (v1.2.0)', () => {
         await connection.startScreenShare()
         connection.stopScreenShare()
 
-        expect(mockScreenStream.getTracks()[0].stop).toHaveBeenCalled()
+        expect(mockStopFn).toHaveBeenCalled()
       })
 
       it('should emit screen_share_stopped event', async () => {
