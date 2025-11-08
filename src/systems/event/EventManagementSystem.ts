@@ -2,13 +2,23 @@ import { SystemError, ErrorCode } from '../../interfaces/errors.interface'
 import { EventConfig, Lecture, EventOptions } from '../../interfaces'
 import { CreateLectureSchema, UpdateLectureSchema } from '../../interfaces/schema'
 import { JsonDatabase } from '../../utils/JsonDatabase'
+import { RealTimeCommunicationSystem } from '../comms/RealTimeCommunicationSystem'
 
 export class EventManagementSystem {
   private db: JsonDatabase
+  private commsSystem: RealTimeCommunicationSystem | null = null
 
   constructor(private config?: EventConfig) {
     // Use singleton instance of JsonDatabase
     this.db = JsonDatabase.getInstance()
+  }
+
+  /**
+   * Set the communication system instance
+   * This is needed to call clearRoom when lecture ends
+   */
+  setCommsSystem(commsSystem: RealTimeCommunicationSystem): void {
+    this.commsSystem = commsSystem
   }
 
   async createEvent(options: EventOptions & { teacherId: string; createdBy: string }): Promise<Lecture> {
@@ -78,7 +88,7 @@ export class EventManagementSystem {
       if (!updated) {
         throw new SystemError('EVENT_NOT_FOUND', `Event ${eventId} not found`)
       }
-      
+
       // Update the room if this lecture was associated with it
       const room = await this.db.findOne('rooms', { id: event.roomId })
       if (room && room.currentLecture?.id === eventId) {
@@ -88,6 +98,11 @@ export class EventManagementSystem {
           updatedAt: new Date().toISOString()
         })
         console.log(`Room ${event.roomId} status updated after lecture cancellation`)
+
+        // v1.1.3: Clear room ephemeral data when lecture is cancelled
+        if (this.commsSystem) {
+          this.commsSystem.clearRoom(event.roomId)
+        }
       }
     } catch (error) {
       throw new SystemError('EVENT_CANCELLATION_FAILED', 'Failed to cancel event', error)
@@ -187,17 +202,22 @@ export class EventManagementSystem {
         } else if (newStatus === 'completed' || newStatus === 'cancelled') {
           roomStatus = 'available'
         }
-        
+
         // Update room status and lecture reference
         await this.db.update('rooms', { id: event.roomId }, {
           status: roomStatus,
-          currentLecture: newStatus === 'completed' || newStatus === 'cancelled' 
-            ? undefined 
+          currentLecture: newStatus === 'completed' || newStatus === 'cancelled'
+            ? undefined
             : { ...room.currentLecture, status: newStatus },
           updatedAt: new Date().toISOString()
         })
-        
+
         console.log(`Room ${event.roomId} status updated to ${roomStatus} after lecture status change to ${newStatus}`)
+
+        // v1.1.3: Clear room ephemeral data when lecture ends (completed or cancelled)
+        if ((newStatus === 'completed' || newStatus === 'cancelled') && this.commsSystem) {
+          this.commsSystem.clearRoom(event.roomId)
+        }
       }
 
       return updated

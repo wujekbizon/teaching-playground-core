@@ -20,6 +20,9 @@ export default class TeachingPlayground {
     this.commsSystem = new RealTimeCommunicationSystem(config.commsConfig)
     this.eventSystem = new EventManagementSystem(config.eventConfig)
     this.dataSystem = new DataManagementSystem(config.dataConfig)
+
+    // Inject commsSystem into eventSystem for room cleanup (v1.1.3 feature)
+    this.eventSystem.setCommsSystem(this.commsSystem)
   }
 
   setCurrentUser(user: User | null): void {

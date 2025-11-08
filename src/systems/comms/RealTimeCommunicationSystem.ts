@@ -351,11 +351,11 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     }
   }
 
-  // WebRTC Signaling Handlers
+  // WebRTC Signaling Handlers (v1.2.0: Updated to match API contract)
   private handleWebRTCOffer(socket: any, data: { roomId: string; targetPeerId: string; offer: RTCSessionDescriptionInit }) {
     try {
       socket.to(data.targetPeerId).emit('webrtc:offer', {
-        from: socket.id,
+        fromPeerId: socket.id,  // v1.2.0: Changed from 'from' to 'fromPeerId'
         offer: data.offer
       })
       console.log(`WebRTC offer sent from ${socket.id} to ${data.targetPeerId}`)
@@ -367,7 +367,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
   private handleWebRTCAnswer(socket: any, data: { targetPeerId: string; answer: RTCSessionDescriptionInit }) {
     try {
       socket.to(data.targetPeerId).emit('webrtc:answer', {
-        from: socket.id,
+        fromPeerId: socket.id,  // v1.2.0: Changed from 'from' to 'fromPeerId'
         answer: data.answer
       })
       console.log(`WebRTC answer sent from ${socket.id} to ${data.targetPeerId}`)
@@ -379,7 +379,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
   private handleWebRTCIceCandidate(socket: any, data: { targetPeerId: string; candidate: RTCIceCandidateInit }) {
     try {
       socket.to(data.targetPeerId).emit('webrtc:ice-candidate', {
-        from: socket.id,
+        fromPeerId: socket.id,  // v1.2.0: Changed from 'from' to 'fromPeerId'
         candidate: data.candidate
       })
     } catch (error) {
@@ -488,6 +488,51 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       return []
     }
     return Array.from(participants.values())
+  }
+
+  /**
+   * Clears all ephemeral data for a specific room
+   * Called when lecture ends (completed/cancelled)
+   * This is v1.1.3 feature for proper room cleanup
+   */
+  clearRoom(roomId: string): void {
+    try {
+      console.log(`Clearing room ${roomId} - removing all ephemeral data`)
+
+      // Clear participants from memory
+      const participantCount = this.rooms.get(roomId)?.size || 0
+      this.rooms.delete(roomId)
+
+      // Clear message history from memory
+      const messageCount = this.messages.get(roomId)?.length || 0
+      this.messages.delete(roomId)
+      this.messageSequence.delete(roomId)
+
+      // Clear active streams
+      const hadStream = this.streams.has(roomId)
+      this.streams.delete(roomId)
+
+      // Clear activity tracking
+      this.roomLastActivity.delete(roomId)
+
+      // Emit event to all clients in this room
+      if (this.io) {
+        this.io.to(roomId).emit('room_cleared', {
+          roomId,
+          reason: 'Lecture ended',
+          timestamp: new Date().toISOString()
+        })
+      }
+
+      console.log(`✓ Room ${roomId} cleared successfully:`, {
+        participants: participantCount,
+        messages: messageCount,
+        hadStream
+      })
+    } catch (error) {
+      console.error(`Failed to clear room ${roomId}:`, error)
+      throw new SystemError('ROOM_CLEAR_FAILED', 'Failed to clear room data')
+    }
   }
 
   async shutdown(): Promise<void> {

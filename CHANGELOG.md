@@ -5,6 +5,106 @@ All notable changes to the Teaching Playground Core package will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-11-08
+
+### 🎥 Major Features - WebRTC Media Streaming & Screen Sharing
+
+This release implements the complete WebRTC peer-to-peer media streaming infrastructure, enabling actual video/audio communication between participants.
+
+### Added
+
+#### v1.1.3 - Room Cleanup
+- **`RealTimeCommunicationSystem.clearRoom()`** - Clears all ephemeral data for a specific room
+  - Removes participants from memory
+  - Clears message history
+  - Clears active streams
+  - Closes WebRTC connections
+  - Emits `room_cleared` event to all clients
+- **Automatic cleanup on lecture end** - EventManagementSystem now calls `clearRoom()` when lecture status becomes 'completed' or 'cancelled'
+- **`room_cleared` event** - New WebSocket event sent to clients when room is cleaned up
+
+#### v1.2.0 - WebRTC Media Streaming
+- **`RoomConnection.setupPeerConnection()`** - Setup WebRTC peer connection with another participant
+  - Creates RTCPeerConnection with STUN servers
+  - Adds local media tracks
+  - Handles incoming remote tracks
+  - Manages ICE candidates
+  - Tracks connection state changes
+- **`RoomConnection.createOffer()`** - Create and send WebRTC offer to peer
+- **`RoomConnection.handleWebRTCOffer()`** - Handle incoming WebRTC offer and send answer
+- **`RoomConnection.handleWebRTCAnswer()`** - Handle incoming WebRTC answer
+- **`RoomConnection.handleWebRTCIceCandidate()`** - Handle incoming ICE candidates
+- **`RoomConnection.closePeerConnection()`** - Cleanup peer connection
+- **`RoomConnection.getRemoteStream()`** - Get remote stream for a specific peer
+- **`RoomConnection.getAllRemoteStreams()`** - Get all remote streams
+- **Peer connection management** - Maintains Map of RTCPeerConnection objects and remote MediaStreams
+- **WebRTC signaling events** - Standardized event format with `fromPeerId`
+
+#### v1.3.0 - Screen Sharing
+- **`RoomConnection.startScreenShare()`** - Start screen sharing
+  - Replaces camera video with screen capture
+  - Automatically switches back when user stops sharing
+  - Handles browser "Stop Sharing" button
+- **`RoomConnection.stopScreenShare()`** - Stop screen sharing and switch back to camera
+- **`RoomConnection.isScreenSharing()`** - Check if currently screen sharing
+- **`screen_share_started` event** - Emitted when screen sharing starts
+- **`screen_share_stopped` event** - Emitted when screen sharing stops
+
+### Changed
+
+- **WebRTC signaling format** - Updated server to use `fromPeerId` instead of `from` for consistency with API contract
+- **EventManagementSystem** - Now accepts commsSystem via `setCommsSystem()` for room cleanup integration
+
+### Frontend Integration
+
+**New Events**:
+```typescript
+// Room cleanup
+connection.on('room_cleared', ({ roomId, reason }) => { /* ... */ })
+
+// WebRTC media
+connection.on('remote_stream_added', ({ peerId, stream }) => { /* ... */ })
+connection.on('remote_stream_removed', ({ peerId }) => { /* ... */ })
+
+// Screen sharing
+connection.on('screen_share_started', () => { /* ... */ })
+connection.on('screen_share_stopped', () => { /* ... */ })
+```
+
+**Usage Example**:
+```typescript
+// Get local media
+const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+
+// When participant joins
+connection.on('user_joined', async ({ socketId }) => {
+  await connection.setupPeerConnection(socketId, stream)
+  await connection.createOffer(socketId)
+})
+
+// Display remote streams
+connection.on('remote_stream_added', ({ peerId, stream }) => {
+  videoElement.srcObject = stream
+})
+
+// Screen sharing
+await connection.startScreenShare()
+```
+
+### Architecture
+
+Follows industry-standard WebRTC pattern:
+- **Server**: Relay-only signaling (no media processing)
+- **Client**: Peer-to-peer media streams (direct connection between participants)
+- **STUN Servers**: Google's public STUN for NAT traversal
+
+### Notes
+
+- WebRTC works well for 4-6 participants (P2P mesh)
+- For larger classes (>10 participants), consider SFU (Selective Forwarding Unit) - planned for v2.0
+- Screen sharing automatically falls back to camera if user cancels
+- All peer connections cleaned up automatically on disconnect
+
 ## [1.1.2] - 2025-11-08
 
 ### 🏗️ BREAKING CHANGES - Industry-Standard Architecture

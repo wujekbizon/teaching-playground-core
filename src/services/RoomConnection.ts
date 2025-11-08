@@ -34,6 +34,12 @@ export class RoomConnection extends EventEmitter {
   private streams: Map<string, StreamState> = new Map()
   private messages: Map<string, RoomMessage[]> = new Map()
 
+  // v1.2.0: WebRTC peer connection management
+  private peerConnections: Map<string, RTCPeerConnection> = new Map()
+  private remoteStreams: Map<string, MediaStream> = new Map()
+  private screenShareStream: MediaStream | null = null
+  private originalVideoTrack: MediaStreamTrack | null = null
+
   constructor(
     private roomId: string,
     private user: User,
@@ -185,6 +191,43 @@ export class RoomConnection extends EventEmitter {
       } catch (error) {
         console.error('Failed to handle ICE candidate:', error)
       }
+    })
+
+    // v1.2.0: New WebRTC signaling event listeners (standardized format)
+    this.socket.on('webrtc:offer', async ({ fromPeerId, offer }) => {
+      console.log(`Received WebRTC offer from ${fromPeerId}`)
+      try {
+        await this.handleWebRTCOffer(fromPeerId, offer)
+      } catch (error) {
+        console.error('Failed to handle WebRTC offer:', error)
+      }
+    })
+
+    this.socket.on('webrtc:answer', async ({ fromPeerId, answer }) => {
+      console.log(`Received WebRTC answer from ${fromPeerId}`)
+      try {
+        await this.handleWebRTCAnswer(fromPeerId, answer)
+      } catch (error) {
+        console.error('Failed to handle WebRTC answer:', error)
+      }
+    })
+
+    this.socket.on('webrtc:ice-candidate', async ({ fromPeerId, candidate }) => {
+      console.log(`Received ICE candidate from ${fromPeerId}`)
+      try {
+        await this.handleWebRTCIceCandidate(fromPeerId, candidate)
+      } catch (error) {
+        console.error('Failed to handle ICE candidate:', error)
+      }
+    })
+
+    // v1.1.3: Handle room_cleared event
+    this.socket.on('room_cleared', (data: { roomId: string; reason: string; timestamp: string }) => {
+      console.log('Room cleared:', data)
+      this.emit('room_cleared', data)
+      // Clear local state
+      this.messageHistory = []
+      this.currentStream = null
     })
 
     this.socket.on('stream_started', (state: StreamState) => {
@@ -388,5 +431,263 @@ export class RoomConnection extends EventEmitter {
     } catch (error) {
       console.error('Failed to handle ICE candidate:', error)
     }
+  }
+
+  /**
+   * v1.2.0: Setup WebRTC peer connection with another participant
+   * @param peerId - Socket ID of the remote peer
+   * @param localStream - Local media stream to send
+   */
+  async setupPeerConnection(
+    peerId: string,
+    localStream: MediaStream
+  ): Promise<RTCPeerConnection> {
+    const iceServers = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    }
+
+    const pc = new RTCPeerConnection(iceServers)
+
+    // Add local tracks to connection
+    localStream.getTracks().forEach(track => {
+      pc.addTrack(track, localStream)
+    })
+
+    // Handle incoming remote tracks
+    pc.ontrack = (event) => {
+      console.log(`Received remote track from ${peerId}`)
+      this.remoteStreams.set(peerId, event.streams[0])
+
+      // Emit to frontend
+      this.emit('remote_stream_added', {
+        peerId,
+        stream: event.streams[0]
+      })
+    }
+
+    // Handle ICE candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate && this.socket) {
+        this.socket.emit('webrtc:ice-candidate', {
+          targetPeerId: peerId,
+          candidate: event.candidate
+        })
+      }
+    }
+
+    // Handle connection state changes
+    pc.onconnectionstatechange = () => {
+      console.log(`Peer connection state with ${peerId}: ${pc.connectionState}`)
+
+      if (pc.connectionState === 'disconnected' ||
+          pc.connectionState === 'failed' ||
+          pc.connectionState === 'closed') {
+        this.remoteStreams.delete(peerId)
+        this.emit('remote_stream_removed', { peerId })
+      }
+    }
+
+    this.peerConnections.set(peerId, pc)
+    return pc
+  }
+
+  /**
+   * v1.2.0: Create WebRTC offer and send to peer
+   * @param peerId - Target peer socket ID
+   */
+  async createOffer(peerId: string): Promise<void> {
+    const pc = this.peerConnections.get(peerId)
+    if (!pc) {
+      throw new Error(`No peer connection found for ${peerId}`)
+    }
+
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true
+    })
+
+    await pc.setLocalDescription(offer)
+
+    if (this.socket) {
+      this.socket.emit('webrtc:offer', {
+        targetPeerId: peerId,
+        offer: pc.localDescription
+      })
+    }
+
+    console.log(`Sent WebRTC offer to ${peerId}`)
+  }
+
+  /**
+   * v1.2.0: Handle incoming WebRTC offer from peer
+   * @param fromPeerId - Peer who sent the offer
+   * @param offer - SDP offer
+   */
+  async handleWebRTCOffer(
+    fromPeerId: string,
+    offer: RTCSessionDescriptionInit
+  ): Promise<void> {
+    const pc = this.peerConnections.get(fromPeerId)
+    if (!pc) {
+      throw new Error(`No peer connection found for ${fromPeerId}`)
+    }
+
+    await pc.setRemoteDescription(new RTCSessionDescription(offer))
+
+    const answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
+
+    if (this.socket) {
+      this.socket.emit('webrtc:answer', {
+        targetPeerId: fromPeerId,
+        answer: pc.localDescription
+      })
+    }
+
+    console.log(`Sent WebRTC answer to ${fromPeerId}`)
+  }
+
+  /**
+   * v1.2.0: Handle incoming WebRTC answer from peer
+   * @param fromPeerId - Peer who sent the answer
+   * @param answer - SDP answer
+   */
+  async handleWebRTCAnswer(
+    fromPeerId: string,
+    answer: RTCSessionDescriptionInit
+  ): Promise<void> {
+    const pc = this.peerConnections.get(fromPeerId)
+    if (!pc) {
+      throw new Error(`No peer connection found for ${fromPeerId}`)
+    }
+
+    await pc.setRemoteDescription(new RTCSessionDescription(answer))
+    console.log(`Received WebRTC answer from ${fromPeerId}`)
+  }
+
+  /**
+   * v1.2.0: Handle incoming ICE candidate from peer
+   * @param fromPeerId - Peer who sent the candidate
+   * @param candidate - ICE candidate
+   */
+  async handleWebRTCIceCandidate(
+    fromPeerId: string,
+    candidate: RTCIceCandidateInit
+  ): Promise<void> {
+    const pc = this.peerConnections.get(fromPeerId)
+    if (!pc) {
+      console.warn(`No peer connection found for ${fromPeerId}`)
+      return
+    }
+
+    await pc.addIceCandidate(new RTCIceCandidate(candidate))
+    console.log(`Added ICE candidate from ${fromPeerId}`)
+  }
+
+  /**
+   * v1.2.0: Cleanup peer connection
+   * @param peerId - Peer to disconnect from
+   */
+  closePeerConnection(peerId: string): void {
+    const pc = this.peerConnections.get(peerId)
+    if (pc) {
+      pc.close()
+      this.peerConnections.delete(peerId)
+      this.remoteStreams.delete(peerId)
+    }
+  }
+
+  /**
+   * v1.2.0: Get remote stream for a specific peer
+   * @param peerId - Peer socket ID
+   */
+  getRemoteStream(peerId: string): MediaStream | undefined {
+    return this.remoteStreams.get(peerId)
+  }
+
+  /**
+   * v1.2.0: Get all remote streams
+   */
+  getAllRemoteStreams(): Map<string, MediaStream> {
+    return this.remoteStreams
+  }
+
+  /**
+   * v1.3.0: Start screen sharing
+   * Replaces camera video with screen video in all peer connections
+   */
+  async startScreenShare(): Promise<MediaStream> {
+    try {
+      // Get screen share stream
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: 'always',
+          displaySurface: 'monitor'
+        } as any,  // Type assertion needed for screen capture constraints
+        audio: false
+      })
+
+      this.screenShareStream = screenStream
+      const screenTrack = screenStream.getVideoTracks()[0]
+
+      // Replace video track in all peer connections
+      this.peerConnections.forEach((pc, peerId) => {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'video')
+        if (sender) {
+          // Save original camera track
+          this.originalVideoTrack = sender.track
+          // Replace with screen track
+          sender.replaceTrack(screenTrack)
+        }
+      })
+
+      // Handle screen share stop (user clicks "Stop Sharing" in browser)
+      screenTrack.onended = () => {
+        this.stopScreenShare()
+      }
+
+      this.emit('screen_share_started')
+
+      return screenStream
+    } catch (error) {
+      console.error('Failed to start screen share:', error)
+      throw error
+    }
+  }
+
+  /**
+   * v1.3.0: Stop screen sharing
+   * Switches back to camera video
+   */
+  stopScreenShare(): void {
+    if (!this.screenShareStream) return
+
+    // Stop screen tracks
+    this.screenShareStream.getTracks().forEach(track => track.stop())
+
+    // Switch back to camera in all peer connections
+    if (this.originalVideoTrack) {
+      this.peerConnections.forEach(pc => {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'video')
+        if (sender) {
+          sender.replaceTrack(this.originalVideoTrack!)
+        }
+      })
+    }
+
+    this.screenShareStream = null
+    this.originalVideoTrack = null
+
+    this.emit('screen_share_stopped')
+  }
+
+  /**
+   * v1.3.0: Check if currently screen sharing
+   */
+  isScreenSharing(): boolean {
+    return this.screenShareStream !== null
   }
 } 
