@@ -1,6 +1,6 @@
 {
   "name": "@teaching-playground/core",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "A production-ready WebSocket and WebRTC virtual classroom system for real-time online education with video streaming, chat, and lecture management",
   "keywords": [
     "education",

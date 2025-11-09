@@ -65,22 +65,21 @@ export class JsonDatabase {
             hasWhiteboard: true,
             hasScreenShare: true,
           },
-          participants: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
       ],
-      participants: []
+      participants: [] // Keep root-level for future reporting (which students attended lectures)
     }
   }
 
   private async ensureDataDirectory() {
     if (this.isServer) {
-      const { existsSync, mkdir } = require('fs')
+      const { existsSync, mkdirSync } = require('fs')
       const { join } = require('path')
       const dataDir = join(process.cwd(), 'data')
       if (!existsSync(dataDir)) {
-        await mkdir(dataDir, { recursive: true })
+        mkdirSync(dataDir, { recursive: true })
       }
     }
   }
@@ -196,7 +195,10 @@ export class JsonDatabase {
   async find(collection: string, query: Record<string, any> = {}) {
     const release = await this.mutex.acquire()
     try {
-      await this.load()
+      // Only load if data not yet initialized (v1.4.3: caching optimization)
+      if (!this.data) {
+        await this.load()
+      }
       console.log(`Finding in collection \`${collection}\` with query:`, query);
       return this.data[collection].filter((item: any) =>
         Object.entries(query).every(([key, value]) => item[key] === value)
@@ -217,7 +219,10 @@ export class JsonDatabase {
     const release = await this.mutex.acquire()
     try {
       console.log(`Inserting into collection \`${collection}\`:`, document);
-      await this.load()
+      // Only load if data not yet initialized (v1.4.3: caching optimization)
+      if (!this.data) {
+        await this.load()
+      }
       this.data[collection].push(document)
       await this.save()
 
@@ -237,7 +242,10 @@ export class JsonDatabase {
     const release = await this.mutex.acquire()
     try {
       console.log(`Updating collection \`${collection}\` with query:`, query, 'updates:', update);
-      await this.load()
+      // Only load if data not yet initialized (v1.4.3: caching optimization)
+      if (!this.data) {
+        await this.load()
+      }
       const index = this.data[collection].findIndex((item: any) =>
         Object.entries(query).every(([key, value]) => item[key] === value)
       )
@@ -307,7 +315,10 @@ export class JsonDatabase {
     const release = await this.mutex.acquire()
     try {
       console.log(`Deleting from collection \`${collection}\` with query:`, query);
-      await this.load()
+      // Only load if data not yet initialized (v1.4.3: caching optimization)
+      if (!this.data) {
+        await this.load()
+      }
       const initialLength = this.data[collection].length
       this.data[collection] = this.data[collection].filter(
         (item: any) => !Object.entries(query).every(([key, value]) => item[key] === value)
