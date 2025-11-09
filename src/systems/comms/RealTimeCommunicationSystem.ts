@@ -291,8 +291,17 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       // v1.4.2: Notify others with full participant object and log the emission
       const existingParticipants = allParticipants.filter(p => p.socketId !== socket.id)
       console.log(`Emitting 'user_joined' to ${existingParticipants.length} existing participants:`,
-        existingParticipants.map(p => ({ username: p.username, socketId: p.socketId })))
-      socket.to(roomId).emit('user_joined', participant)
+        existingParticipants.map(p => ({ userId: p.id, username: p.username, socketId: p.socketId })))
+
+      // v1.4.4: Include userId explicitly for frontend compatibility
+      socket.to(roomId).emit('user_joined', {
+        userId: participant.id,
+        username: participant.username,
+        socketId: participant.socketId,
+        role: participant.role,
+        displayName: participant.displayName,
+        status: participant.status
+      })
     } catch (error) {
       console.error('Error in handleJoinRoom:', error)
       socket.emit('error', { message: 'Failed to join room' })
