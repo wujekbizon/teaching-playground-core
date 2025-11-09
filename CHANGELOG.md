@@ -42,6 +42,25 @@ socket.to(roomId).emit('user_joined', {
 **Changed:**
 - `src/systems/comms/RealTimeCommunicationSystem.ts` (lines 297-304)
 - Enhanced logging to include userId in participant maps
+- `src/utils/JsonDatabase.ts` - Removed unused root-level `participants` array from schema
+
+**Database Schema Update:**
+```json
+// BEFORE
+{
+  "events": [],
+  "rooms": [],
+  "participants": []  // ← Removed (unused, will use dedicated audit system)
+}
+
+// AFTER
+{
+  "events": [],
+  "rooms": []
+}
+```
+
+**Note:** Participants are tracked in-memory by RealTimeCommunicationSystem (WebSocket). A dedicated audit/reporting system will be implemented separately for historical tracking.
 
 ---
 
