@@ -5,6 +5,98 @@ All notable changes to the Teaching Playground Core package will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2025-11-09
+
+### 🐛 WebRTC Hotfixes
+
+This hotfix release addresses critical WebRTC peer connection issues reported by the frontend team.
+
+### Fixed
+
+#### Issue #4: setupPeerConnection Crashes with Null Streams (CRITICAL)
+**Problem:** The `setupPeerConnection()` method crashed when called with a `null` or `undefined` stream.
+
+**Error:**
+```
+TypeError: Cannot read properties of null (reading 'getTracks')
+at RoomConnection.setupPeerConnection (RoomConnection.js:426)
+```
+
+**Root Cause:** The method tried to call `stream.getTracks()` without checking if the stream was null:
+```typescript
+// Before (v1.4.1) - BROKEN
+async setupPeerConnection(peerId: string, localStream: MediaStream) {
+  const pc = new RTCPeerConnection(iceServers)
+  localStream.getTracks().forEach(track => {  // ← Crashes if stream is null!
+    pc.addTrack(track, localStream)
+  })
+}
+```
+
+**Fix:** Made `localStream` optional and only add tracks if stream is provided:
+```typescript
+// After (v1.4.2) - FIXED
+async setupPeerConnection(peerId: string, localStream?: MediaStream | null) {
+  const pc = new RTCPeerConnection(iceServers)
+
+  // Only add tracks if stream is provided
+  if (localStream) {
+    localStream.getTracks().forEach(track => {
+      pc.addTrack(track, localStream)
+    })
+  }
+}
+```
+
+**Impact:** Students can now join rooms without starting their camera first and still receive video from teachers. This enables "receive-only" peer connections.
+
+**Use Case:**
+1. Student joins room WITHOUT starting camera (no local stream)
+2. Teacher joins and starts streaming
+3. Student creates peer connection to RECEIVE teacher's offer
+4. Student can later add tracks when they start their camera
+
+#### Issue #5: Enhanced user_joined Emission Logging
+**Problem:** Difficult to debug whether `user_joined` events were being emitted to existing participants.
+
+**Fix:** Added comprehensive logging when new users join:
+```typescript
+// v1.4.2: Log exactly who is being notified
+const existingParticipants = allParticipants.filter(p => p.socketId !== socket.id)
+console.log(`Emitting 'user_joined' to ${existingParticipants.length} existing participants:`,
+  existingParticipants.map(p => ({ username: p.username, socketId: p.socketId })))
+socket.to(roomId).emit('user_joined', participant)
+```
+
+**Impact:** Backend logs now clearly show:
+- How many existing participants are in the room
+- Which sockets are receiving the `user_joined` event
+- Full participant details for debugging
+
+**Example Log:**
+```
+User teacher@example.com (socket-123) joined room room-1
+Room room-1 now has 2 participants: [...]
+Emitting 'user_joined' to 1 existing participants: [
+  { username: 'student@example.com', socketId: 'socket-456' }
+]
+```
+
+### Changed
+
+- **setupPeerConnection()** - `localStream` parameter is now optional (`MediaStream | null | undefined`)
+- **handleJoinRoom()** - Enhanced logging for `user_joined` event emission
+- **RoomConnection.ts** - Line 491-514: Updated peer connection setup logic
+
+### Testing
+
+- ✅ All 147 tests passing
+- ✅ Peer connections work with null streams
+- ✅ Receive-only connections can be established
+- ✅ Enhanced logging provides better debugging information
+
+---
+
 ## [1.4.1] - 2025-11-08
 
 ### 🐛 Critical Hotfixes

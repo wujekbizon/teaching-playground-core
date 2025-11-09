@@ -485,12 +485,13 @@ export class RoomConnection extends EventEmitter {
 
   /**
    * v1.2.0: Setup WebRTC peer connection with another participant
+   * v1.4.2: Made localStream optional to support receiving-only connections
    * @param peerId - Socket ID of the remote peer
-   * @param localStream - Local media stream to send
+   * @param localStream - Local media stream to send (optional)
    */
   async setupPeerConnection(
     peerId: string,
-    localStream: MediaStream
+    localStream?: MediaStream | null
   ): Promise<RTCPeerConnection> {
     const iceServers = {
       iceServers: [
@@ -501,10 +502,16 @@ export class RoomConnection extends EventEmitter {
 
     const pc = new RTCPeerConnection(iceServers)
 
-    // Add local tracks to connection
-    localStream.getTracks().forEach(track => {
-      pc.addTrack(track, localStream)
-    })
+    // v1.4.2: Only add local tracks if stream is provided
+    // This allows creating peer connections for receiving remote streams without having a local stream
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        pc.addTrack(track, localStream)
+      })
+      console.log(`Added ${localStream.getTracks().length} tracks to peer connection for ${peerId}`)
+    } else {
+      console.log(`Created receive-only peer connection for ${peerId} (no local stream)`)
+    }
 
     // Handle incoming remote tracks
     pc.ontrack = (event) => {
