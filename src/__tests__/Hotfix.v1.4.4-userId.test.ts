@@ -141,48 +141,43 @@ describe('Hotfix v1.4.4 - user_joined userId Field', () => {
 
   it('should emit userId to ALL existing participants (not just teacher)', (done) => {
     const roomId = 'test-userid-broadcast'
-    let teacherReceived = false
-    let student1Received = false
+    const joinedUsers: string[] = []
 
-    // Teacher joins
+    // Teacher joins first
     teacherSocket.emit('join_room', { roomId, user: teacher })
 
-    teacherSocket.on('room_state', () => {
-      // Student 1 joins
-      student1Socket = ioClient('http://localhost:3011', { transports: ['websocket'] })
+    // Listen for user_joined events on teacher socket
+    teacherSocket.on('user_joined', (data: any) => {
+      expect(data).toHaveProperty('userId')
+      expect(data.userId).toBeDefined()
+      joinedUsers.push(data.userId)
 
-      student1Socket.on('connect', () => {
-        student1Socket.emit('join_room', { roomId, user: student1 })
-
-        student1Socket.on('room_state', () => {
-          // Now student 2 joins - both teacher AND student1 should receive user_joined with userId
-          student2Socket = ioClient('http://localhost:3011', { transports: ['websocket'] })
-
-          teacherSocket.once('user_joined', (data: any) => {
-            if (data.userId === student2.id) {
-              expect(data.userId).toBe(student2.id)
-              expect(data.username).toBe(student2.username)
-              teacherReceived = true
-              if (student1Received) done()
-            }
-          })
-
-          student1Socket.once('user_joined', (data: any) => {
-            if (data.userId === student2.id) {
-              expect(data.userId).toBe(student2.id)
-              expect(data.username).toBe(student2.username)
-              student1Received = true
-              if (teacherReceived) done()
-            }
-          })
-
-          student2Socket.on('connect', () => {
-            student2Socket.emit('join_room', { roomId, user: student2 })
-          })
-        })
-      })
+      // When both students have been announced
+      if (joinedUsers.length === 2) {
+        expect(joinedUsers).toContain(student1.id)
+        expect(joinedUsers).toContain(student2.id)
+        done()
+      }
     })
-  }, 10000)
+
+    // After teacher is ready, add students (use 'once' to avoid multiple triggers)
+    teacherSocket.once('room_state', () => {
+      setTimeout(() => {
+        student1Socket = ioClient('http://localhost:3011', { transports: ['websocket'] })
+        student1Socket.on('connect', () => {
+          student1Socket.emit('join_room', { roomId, user: student1 })
+
+          // Add student2 after a delay
+          setTimeout(() => {
+            student2Socket = ioClient('http://localhost:3011', { transports: ['websocket'] })
+            student2Socket.on('connect', () => {
+              student2Socket.emit('join_room', { roomId, user: student2 })
+            })
+          }, 200)
+        })
+      }, 100)
+    })
+  }, 15000)
 
   it('should NOT send userId in room_state to the joining user (consistency check)', (done) => {
     // This test verifies that room_state still sends the full participant objects

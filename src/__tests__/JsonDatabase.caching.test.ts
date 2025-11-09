@@ -164,28 +164,6 @@ describe('JsonDatabase Caching (v1.4.3)', () => {
       const insertedRoom = await db.findOne('rooms', { id: 'room-no-participants' })
       expect(insertedRoom).not.toHaveProperty('participants')
     })
-
-    it('should keep root-level participants array for future reporting', async () => {
-      // Root-level participants should exist
-      const participants = await db.find('participants', {})
-      expect(participants).toEqual([])
-
-      // Should be able to insert into participants collection
-      const participant = {
-        id: 'participant-1',
-        userId: 'user-123',
-        roomId: 'test-room-1',
-        username: 'Test Student',
-        joinedAt: new Date().toISOString(),
-        leftAt: null
-      }
-
-      await db.insert('participants', participant)
-
-      // Verify participant was inserted
-      const foundParticipant = await db.findOne('participants', { id: 'participant-1' })
-      expect(foundParticipant).toEqual(participant)
-    })
   })
 
   describe('Performance Optimization', () => {

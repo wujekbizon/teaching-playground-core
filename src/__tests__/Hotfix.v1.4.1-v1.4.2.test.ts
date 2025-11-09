@@ -695,9 +695,9 @@ describe('Hotfix v1.4.2 - Issue #5: user_joined emission logging', () => {
         teacherSocket.on('user_joined', (participant: any) => {
           console.log('Teacher received user_joined:', participant)
 
-          // CRITICAL TEST: Teacher should receive student's participant data
+          // CRITICAL TEST: Teacher should receive student's participant data (v1.4.4: userId field)
           expect(participant).toBeDefined()
-          expect(participant.id).toBe(student.id)
+          expect(participant.userId).toBe(student.id)  // v1.4.4: Changed from id to userId
           expect(participant.username).toBe(student.username)
           expect(participant.role).toBe(student.role)
           expect(participant.socketId).toBeDefined()
@@ -745,7 +745,7 @@ describe('Hotfix v1.4.2 - Issue #5: user_joined emission logging', () => {
           if (state2.participants.length === 2) {
             // Both teachers are in room, now student joins
             teacherSocket.on('user_joined', (participant: any) => {
-              if (participant.id === student.id) {
+              if (participant.userId === student.id) {  // v1.4.4: Changed from id to userId
                 console.log('Teacher 1 received user_joined for student')
                 teacherReceivedEvent = true
                 checkBothReceived()
@@ -753,7 +753,7 @@ describe('Hotfix v1.4.2 - Issue #5: user_joined emission logging', () => {
             })
 
             teacher2Socket.on('user_joined', (participant: any) => {
-              if (participant.id === student.id) {
+              if (participant.userId === student.id) {  // v1.4.4: Changed from id to userId
                 console.log('Teacher 2 received user_joined for student')
                 teacher2ReceivedEvent = true
                 checkBothReceived()
