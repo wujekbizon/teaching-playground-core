@@ -5,6 +5,65 @@ All notable changes to the Teaching Playground Core package will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] - 2025-11-09
+
+### 🐛 Critical Bug Fix - user_joined Missing userId Field
+
+**Problem:** The `user_joined` WebSocket event was missing the `userId` field, breaking frontend user identification.
+
+**Root Cause:**
+```typescript
+// BEFORE (v1.4.3) - participant object has 'id', not 'userId'
+socket.to(roomId).emit('user_joined', participant)
+```
+
+**Impact:**
+- Frontend could not properly identify users (socketId changes on reconnect, userId is stable)
+- Frontend logs showed: `[WebRTC] BACKEND BUG: user_joined event missing userId field`
+
+**Fix:**
+```typescript
+// AFTER (v1.4.4) - Explicitly include userId
+socket.to(roomId).emit('user_joined', {
+  userId: participant.id,        // ← ADDED!
+  username: participant.username,
+  socketId: participant.socketId,
+  role: participant.role,
+  displayName: participant.displayName,
+  status: participant.status
+})
+```
+
+**Testing:**
+- ✅ Added comprehensive test suite: `Hotfix.v1.4.4-userId.test.ts` (5 tests)
+- ✅ Verifies userId field is present and matches user's id
+- ✅ Confirms userId broadcast to ALL existing participants
+
+**Changed:**
+- `src/systems/comms/RealTimeCommunicationSystem.ts` (lines 297-304)
+- Enhanced logging to include userId in participant maps
+- `src/utils/JsonDatabase.ts` - Removed unused root-level `participants` array from schema
+
+**Database Schema Update:**
+```json
+// BEFORE
+{
+  "events": [],
+  "rooms": [],
+  "participants": []  // ← Removed (unused, will use dedicated audit system)
+}
+
+// AFTER
+{
+  "events": [],
+  "rooms": []
+}
+```
+
+**Note:** Participants are tracked in-memory by RealTimeCommunicationSystem (WebSocket). A dedicated audit/reporting system will be implemented separately for historical tracking.
+
+---
+
 ## [1.4.3] - 2025-11-09
 
 ### ⚡ Performance Optimization - JsonDatabase Caching
