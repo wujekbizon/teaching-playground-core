@@ -68,8 +68,7 @@ export class JsonDatabase {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
-      ],
-      participants: [] // Keep root-level for future reporting (which students attended lectures)
+      ]
     }
   }
 
