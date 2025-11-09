@@ -1,604 +1,677 @@
 # Teaching Playground - Next Features Roadmap
 
-**Current Version**: v1.2.0 (WebRTC Media Streaming)
-**Status**: Production Ready, All Tests Passing
-**Planning Date**: 2025-11-08
+**Current Version**: v1.4.4 (userId Fix + Database Optimization)
+**Status**: Production Ready
+**Last Updated**: 2025-11-09
 
 ---
 
 ## 📊 Current Status Assessment
 
-### ✅ What's Working in Production
+### ✅ What's Completed in Production
 
-**Frontend Implementation:**
+**v1.4.4 - Critical Bug Fixes:**
+- ✅ user_joined event includes userId field
+- ✅ Database schema simplified (events + rooms only)
+- ✅ JsonDatabase caching optimization (750× performance improvement)
+- ✅ 173/174 tests passing (99.4%)
+
+**v1.4.0 - Recording:**
+- ✅ Client-side lecture recording (MediaRecorder API)
+- ✅ Recording start/stop controls
+- ✅ Recording notifications to participants
+- ✅ Download recordings as WebM
+- ✅ Duration tracking
+
+**v1.3.1 - Participant Controls:**
+- ✅ Mute all participants (teacher only)
+- ✅ Mute individual participant (teacher only)
+- ✅ Kick participant (teacher/admin only)
+- ✅ Hand raise (students)
+- ✅ Hand lower (students)
+- ✅ Permission checks and validation
+
+**v1.2.0 - WebRTC Core:**
 - ✅ Video streaming (P2P WebRTC)
 - ✅ Audio streaming
-- ✅ Screen sharing (v1.3.0)
+- ✅ Screen sharing
 - ✅ 3 video layouts (Gallery, Speaker, Sidebar)
 - ✅ Camera/mic controls
 - ✅ Chat messaging
-- ✅ Room cleanup notifications
-- ✅ Participant list
-
-**Package Features Available:**
-- ✅ WebRTC peer connections (v1.2.0)
-- ✅ Screen sharing (v1.3.0)
-- ✅ Room cleanup (v1.1.3)
-- ✅ Message history
-- ✅ Rate limiting
 - ✅ Auto-reconnection
-- ✅ Graceful shutdown
+- ✅ Rate limiting
 
 **Test Coverage:**
-- ✅ 73/73 tests passing (100%)
-- ✅ WebRTC integration tested
-- ✅ Screen sharing tested
-- ✅ Room cleanup tested
+- ✅ 173/174 tests passing (99.4%)
 
 ---
 
-## 🎯 Immediate Priorities (Polish & Stabilize)
-
-### Priority 1: Multi-User Testing & Validation
-**Time Estimate:** 2-3 hours
-**Complexity:** Low
-**Value:** Critical - ensures current features work
-
-**Tasks:**
-1. Test with 2-3 simultaneous participants
-2. Verify video/audio sync between peers
-3. Test screen sharing with multiple viewers
-4. Validate chat works with multiple users
-5. Test connection stability under network changes
-
-**Why First:** Need to validate current implementation works before adding more features
-
-**Package Support:** Already exists, just needs testing
+## 🎯 Next Priorities (Medical Education Focus)
 
 ---
 
-### Priority 2: Connection Quality Indicators
-**Time Estimate:** 3-4 hours
-**Complexity:** Medium
-**Value:** High - improves user experience
+## 🏥 Phase 1: Breakout Rooms for Clinical Case Discussions
 
-**What It Does:**
-- Shows connection quality for each participant (excellent/good/poor)
-- Real-time network health monitoring
-- Visual indicators (colored dots in VideoTile)
-
-**Package API Needed:**
-```typescript
-// Package would provide:
-connection.getConnectionStats(peerId): Promise<RTCStatsReport>
-
-// Or new event:
-connection.on('connection_quality_changed', ({ peerId, quality }) => {
-  // quality: 'excellent' | 'good' | 'poor' | 'disconnected'
-})
-```
-
-**Frontend Tasks:**
-1. Wire up RTCPeerConnection.getStats() API
-2. Calculate quality metrics (packet loss, jitter, RTT)
-3. Update VideoTile connection quality dots
-4. Show warnings for poor connections
-
-**Implementation Notes:**
-- Use existing RTCPeerConnection.getStats() browser API
-- Poll every 2-5 seconds for stats
-- Thresholds: excellent (<50ms RTT), good (<150ms), poor (>150ms)
-
----
-
-### Priority 3: Better Error Handling
-**Time Estimate:** 4-5 hours
-**Complexity:** Medium
-**Value:** High - prevents user frustration
-
-**Scenarios to Handle:**
-
-1. **Camera/Mic Permission Denied**
-   ```typescript
-   // Show friendly message
-   "Camera access denied. Please allow camera access in your browser settings."
-   ```
-
-2. **Connection Lost**
-   ```typescript
-   connection.on('disconnected', () => {
-     showToast('Connection lost. Attempting to reconnect...')
-   })
-
-   connection.on('reconnecting', (attempt) => {
-     showToast(`Reconnecting... (attempt ${attempt}/5)`)
-   })
-
-   connection.on('reconnected', () => {
-     showToast('Successfully reconnected!')
-   })
-   ```
-
-3. **Network Quality Warnings**
-   ```typescript
-   connection.on('poor_network_quality', () => {
-     showWarning('Poor network connection. Video quality may be reduced.')
-   })
-   ```
-
-4. **Peer Connection Failed**
-   ```typescript
-   connection.on('peer_connection_failed', ({ peerId }) => {
-     showError(`Cannot connect to participant ${peerId}`)
-   })
-   ```
-
-**Package Support:**
-- Most events already exist (disconnected, reconnecting, etc.)
-- May need to add `poor_network_quality` event
-- May need to add `peer_connection_failed` event
-
----
-
-### Priority 4: UI Polish
-**Time Estimate:** 3-4 hours
-**Complexity:** Low
-**Value:** Medium - professional appearance
-
-**Improvements:**
-1. **Loading States**
-   - Spinner when starting camera
-   - "Connecting..." indicator for peers
-   - "Screen sharing starting..." feedback
-
-2. **Animations**
-   - Smooth transitions when videos appear/disappear
-   - Fade in/out for participants joining/leaving
-   - Slide animations for layout changes
-
-3. **Confirmation Dialogs**
-   - "Really leave room?" before exit
-   - "Stop screen sharing?" confirmation
-   - "End lecture?" for teachers
-
-4. **Responsive Design**
-   - Test on mobile/tablet
-   - Adjust video grid for small screens
-   - Stack controls vertically on mobile
-
-5. **Accessibility**
-   - Keyboard navigation
-   - Screen reader support
-   - High contrast mode
-
-**Package Support:** Frontend only, no package changes needed
-
----
-
-## 🚀 Phase 3A: Participant Management (Teaching-Specific)
-
-### Priority 5: Participant Controls
-**Time Estimate:** 6-8 hours
-**Complexity:** Medium-High
-**Value:** Very High - core teaching feature
-
-**Features:**
-
-#### 1. Mute All (Teacher Only)
-```typescript
-// Package API:
-connection.muteAllParticipants()
-
-// Event:
-connection.on('muted_by_host', () => {
-  // Disable mic, show notification
-})
-```
-
-#### 2. Mute Individual (Teacher Only)
-```typescript
-// Package API:
-connection.muteParticipant(userId)
-
-// Event:
-connection.on('muted_by_host', ({ reason }) => {
-  // Disable mic
-})
-```
-
-#### 3. Kick Participant (Teacher/Admin Only)
-```typescript
-// Package API:
-connection.kickParticipant(userId, reason?)
-
-// Event:
-connection.on('kicked_from_room', ({ reason }) => {
-  // Redirect to home, show reason
-})
-```
-
-#### 4. Hand Raise (Students)
-```typescript
-// Package API:
-connection.raiseHand()
-connection.lowerHand()
-
-// Events:
-connection.on('hand_raised', ({ userId }) => {
-  // Show indicator next to student
-})
-
-connection.on('hand_lowered', ({ userId }) => {
-  // Remove indicator
-})
-```
-
-**Package Implementation Required:**
-- New events: `mute_participant`, `kick_participant`, `raise_hand`
-- Permission checks (only teachers can mute/kick)
-- Server-side validation
-- Broadcast to all participants
-
-**Frontend Tasks:**
-- Teacher controls UI
-- Student hand raise button
-- Visual indicators for raised hands
-- Queue system for raised hands
-
----
-
-## 🚀 Phase 3B: Recording (High-Value Feature)
-
-### Priority 6: Lecture Recording
-**Time Estimate:** 2-3 days
-**Complexity:** High
-**Value:** Very High - teachers need this
-
-**Package API Design:**
-```typescript
-// Start recording
-connection.startRecording(options?: {
-  includeAudio: boolean;
-  includeVideo: boolean;
-  quality: 'low' | 'medium' | 'high';
-})
-
-// Stop recording
-connection.stopRecording(): Promise<RecordingInfo>
-
-// Events
-connection.on('recording_started', ({ recordingId }) => {
-  // Show red dot indicator
-})
-
-connection.on('recording_stopped', ({ recordingId, duration, url }) => {
-  // Offer download
-})
-
-connection.on('recording_available', ({ recordingId, url }) => {
-  // Recording processed and ready
-})
-```
-
-**Implementation Approaches:**
-
-**Option A: Client-Side Recording (Simpler)**
-- Use MediaRecorder API in browser
-- Record teacher's screen/camera only
-- Save to local file or upload to cloud
-- Pros: Simple, no server processing
-- Cons: Only records teacher view, not student interactions
-
-**Option B: Server-Side Recording (Professional)**
-- Server joins as "recorder" participant
-- Captures all streams and composes them
-- Generates MP4 with multiple tracks
-- Pros: Professional quality, all participants
-- Cons: Complex, server resources required
-
-**Recommendation:** Start with Option A (client-side), upgrade to Option B later
-
-**Frontend Tasks:**
-1. Recording controls (start/stop button)
-2. Recording indicator (red dot)
-3. Recording timer
-4. Download/access interface
-5. Recording list (past recordings)
-
-**Server Tasks:**
-1. Track recording state per room
-2. Generate unique recording IDs
-3. Optional: Cloud storage integration (S3, GCS)
-4. Optional: Processing queue for transcoding
-
----
-
-## 🚀 Phase 3C: Breakout Rooms (Advanced Teaching)
-
-### Priority 7: Breakout Rooms
-**Time Estimate:** 3-5 days
+**Time Estimate:** 5-7 days
 **Complexity:** Very High
-**Value:** High - enables group work
+**Value:** Critical for medical education
+**Target Version:** v1.5.0
+
+### Medical Education Use Cases
+
+**1. Small Group Case Discussions**
+- Split large lecture into 5-8 groups of 3-5 students
+- Each group discusses a different clinical case
+- Instructor rotates between rooms to provide guidance
+- Groups present findings back to main room
+
+**2. OSCE Practice Stations** (Objective Structured Clinical Examination)
+- Multiple exam stations (history taking, physical exam, counseling)
+- Students rotate through stations
+- Instructor observes and scores performance
+- Time-limited rounds (e.g., 7 minutes per station)
+
+**3. Team-Based Learning (TBL)**
+- Phase 1: Individual readiness assurance
+- Phase 2: Team readiness in breakout rooms
+- Phase 3: Application exercises in breakouts
+- Phase 4: Report back to main room
+
+**4. Simulation Debriefing**
+- After simulation scenario, split into small groups for reflection
+- Each group analyzes different aspects (clinical decisions, teamwork, etc.)
+- Reconvene for large group discussion
+
+### Core Features (Inspired by Zoom/Teams)
+
+#### A. Breakout Room Creation & Management
 
 **Package API Design:**
 ```typescript
 // Create breakout rooms
-connection.createBreakoutRooms(config: {
-  count: number;  // Number of rooms
-  duration?: number;  // Auto-close after X minutes
-  assignmentType: 'manual' | 'automatic' | 'student-choice';
+connection.createBreakoutRooms({
+  count: number;                    // Number of rooms (2-50)
+  duration?: number;                // Auto-close timer in minutes
+  assignmentType: 'manual' | 'automatic' | 'self-select';
+  allowParticipantsToReturn?: boolean;  // Allow early return to main
+  allowParticipantsToSwitch?: boolean;  // Allow room switching
 })
 
 // Assign participants
-connection.assignToBreakoutRoom(roomId, userIds)
+connection.assignToBreakoutRoom(roomId, userIds[])
 
-// Broadcast message to all breakout rooms
-connection.broadcastToBreakoutRooms(message)
+// Move all to breakouts
+connection.openAllBreakoutRooms()
 
-// Close all breakout rooms
+// Close all breakouts and return to main
 connection.closeAllBreakoutRooms()
 
+// Broadcast message to all breakouts
+connection.broadcastToBreakoutRooms(message)
+
+// Move between breakout rooms (instructor only)
+connection.joinBreakoutRoom(roomId)
+connection.leaveBreakoutRoom()
+
 // Events
-connection.on('assigned_to_breakout', ({ roomId, participants }) => {
-  // Move to breakout room
+connection.on('breakout_rooms_created', ({ rooms, assignments }) => {})
+connection.on('assigned_to_breakout', ({ roomId, roomName, participants }) => {})
+connection.on('breakout_opened', ({ roomId }) => {})
+connection.on('breakout_closing_soon', ({ secondsRemaining }) => {})
+connection.on('returned_to_main_room', () => {})
+connection.on('instructor_joined_breakout', ({ instructorId }) => {})
+connection.on('instructor_left_breakout', ({ instructorId }) => {})
+```
+
+#### B. Medical Education-Specific Features
+
+**1. Role-Based Breakouts**
+```typescript
+// Assign roles within breakout rooms
+connection.assignBreakoutRoles({
+  roomId: 'breakout-1',
+  roles: [
+    { userId: 'student-1', role: 'team_leader' },
+    { userId: 'student-2', role: 'scribe' },
+    { userId: 'student-3', role: 'presenter' },
+    { userId: 'patient-actor-1', role: 'standardized_patient' }
+  ]
 })
 
-connection.on('breakout_rooms_closing', ({ timeRemaining }) => {
+// Roles for medical education:
+type BreakoutRole =
+  | 'team_leader'          // Leads discussion
+  | 'scribe'               // Takes notes
+  | 'presenter'            // Reports back
+  | 'timekeeper'           // Manages time
+  | 'standardized_patient' // Simulated patient
+  | 'observer'             // Watches only, can't speak
+```
+
+**2. Observation Mode (for Assessment)**
+```typescript
+// Instructor can observe without interrupting
+connection.enterObservationMode(roomId)
+// - Audio/video muted
+// - Not visible to students
+// - Can see/hear everything
+// - Can take notes
+
+connection.exitObservationMode()
+
+// Trigger intervention if needed
+connection.interruptBreakout(roomId, message)
+```
+
+**3. Case Distribution**
+```typescript
+// Assign different cases to different breakouts
+connection.assignBreakoutResources({
+  'breakout-1': {
+    caseId: 'chest-pain-45yo',
+    documents: ['ecg.pdf', 'labs.pdf'],
+    timeLimit: 15
+  },
+  'breakout-2': {
+    caseId: 'abdominal-pain-60yo',
+    documents: ['ct-scan.pdf', 'history.pdf'],
+    timeLimit: 15
+  }
+})
+```
+
+**4. Help Request System**
+```typescript
+// Student requests instructor help
+connection.requestInstructorHelp(message?)
+
+// Instructor sees queue
+connection.on('help_requested', ({ roomId, studentId, message, timestamp }) => {
+  // Show in help queue panel
+})
+
+// Instructor joins to help
+connection.respondToHelpRequest(roomId)
+```
+
+**5. Breakout Timer with Warnings**
+```typescript
+connection.setBreakoutTimer({
+  duration: 15,              // minutes
+  warnings: [10, 5, 2, 1],   // Warn at 10, 5, 2, 1 minutes remaining
+  autoClose: true            // Auto-close when time's up
+})
+
+connection.on('breakout_time_warning', ({ minutesRemaining }) => {
   // Show countdown
 })
 
-connection.on('returned_from_breakout', () => {
-  // Return to main room
+connection.on('breakout_time_expired', () => {
+  // Auto-return to main room
 })
 ```
 
-**Features:**
-1. Create N breakout rooms
-2. Manual or automatic participant assignment
-3. Teacher can visit breakout rooms
-4. Broadcast messages to all breakouts
-5. Timer for automatic return
-6. Help requests from breakout rooms
+**6. Pre-Assigned Groups (from Course Management)**
+```typescript
+// Assign based on pre-defined groups
+connection.createBreakoutRooms({
+  assignmentType: 'predefined',
+  groups: [
+    { name: 'Team A', studentIds: ['s1', 's2', 's3'] },
+    { name: 'Team B', studentIds: ['s4', 's5', 's6'] },
+    { name: 'Team C', studentIds: ['s7', 's8', 's9'] }
+  ]
+})
+```
 
-**Implementation Complexity:**
-- Each breakout room is essentially a new room instance
-- Need to maintain reference to main room
-- Synchronize return to main room
-- Teacher monitoring/assistance
+### Implementation Plan
 
-**Frontend Tasks:**
-1. Breakout room creation UI
-2. Participant assignment interface
-3. Breakout room list/monitor (teacher view)
-4. Timer display
-5. Help request button (students)
-6. "Return to main room" button
+**Phase 1: Core Breakout Infrastructure (3 days)**
+1. Room hierarchy management (main room → breakout rooms)
+2. Participant assignment and movement
+3. WebSocket event handling for room transitions
+4. State synchronization (who's in which room)
+
+**Phase 2: Instructor Controls (2 days)**
+5. Instructor dashboard showing all breakouts
+6. Move between rooms functionality
+7. Broadcast messaging
+8. Close/open all controls
+
+**Phase 3: Medical Education Features (2 days)**
+9. Role assignment system
+10. Observation mode
+11. Help request queue
+12. Timer with warnings
+
+**Technical Challenges:**
+- Each breakout room needs its own WebRTC mesh network
+- Maintain connection to main room while in breakout
+- Handle instructor simultaneously connected to multiple rooms
+- Synchronize state across room hierarchy
+- Performance with many concurrent rooms
 
 ---
 
-## 🎨 Phase 4: Polish Features
+## 🎓 Phase 2: Advanced Participant Management
 
-### Priority 8: Virtual Backgrounds
-**Time Estimate:** 2-3 days
+**Time Estimate:** 4-6 days
 **Complexity:** High
-**Value:** Medium - nice-to-have
+**Value:** Very High for medical education
+**Target Version:** v1.5.0
 
-**Package API:**
+### Medical Education Use Cases
+
+**1. Clinical Skills Assessment**
+- Observe students performing procedures
+- Score performance using rubrics
+- Provide real-time feedback
+- Record sessions for review
+
+**2. Standardized Patient Encounters**
+- Manage patient actors in sessions
+- Control audio/video for different roles
+- Provide feedback without patient hearing
+
+**3. Grand Rounds Presentations**
+- Spotlight student presenters
+- Manage Q&A sessions
+- Control who can unmute
+- Record presentations
+
+### Core Features (Inspired by Zoom/Teams + Medical)
+
+#### A. Advanced Video Controls
+
+**Spotlight/Pin Management:**
 ```typescript
-connection.setVirtualBackground(imageUrl)
-connection.enableBackgroundBlur(strength: number)
-connection.disableBackgroundEffects()
+// Spotlight (everyone sees the same view)
+connection.spotlightParticipant(userId)
+connection.removeSpotlight()
+
+// Co-spotlight (multiple people)
+connection.addToSpotlight(userId)
+connection.removeFromSpotlight(userId)
+
+// Pin (personal view, doesn't affect others)
+connection.pinParticipant(userId)
+connection.unpinParticipant(userId)
 ```
 
-**Implementation:**
-- Use TensorFlow.js BodyPix model
-- Segment person from background
-- Apply blur or replace background
-- Performance consideration: runs in browser
+**Medical Use Case:** During case presentation, spotlight the student presenter + chest X-ray screen share.
 
-**Frontend Tasks:**
-1. Background picker UI
-2. Upload custom backgrounds
-3. Blur strength slider
-4. Preview before applying
+#### B. Waiting Room for Standardized Patients
 
----
-
-## 📅 Recommended Implementation Schedule
-
-### Week 1: Stabilization & Polish
-```
-Day 1-2: Multi-user testing & bug fixes
-Day 3-4: Connection quality indicators
-Day 5: Better error handling
-Weekend: UI polish & responsive design
-```
-
-### Week 2: Core Teaching Features
-```
-Day 1-3: Participant controls (mute, kick, hand raise)
-Day 4-5: Testing & refinement
-Weekend: Documentation
-```
-
-### Week 3: Recording (v1.4.0)
-```
-Day 1-2: Client-side recording implementation
-Day 3: Recording UI & controls
-Day 4-5: Testing & cloud upload integration
-Weekend: Documentation
-```
-
-### Week 4: Advanced Features (v1.5.0)
-```
-Option A: Breakout Rooms (if high priority)
-Option B: Virtual Backgrounds (if requested)
-Option C: Polish & optimize existing features
-```
-
----
-
-## 🎯 My Strong Recommendation
-
-### Immediate Next Steps (This Week):
-
-**1. Multi-User Testing (Today - 3 hours)**
-- Open 3 browser tabs/devices
-- Test all features with real network latency
-- Document any bugs/issues
-
-**2. Connection Quality (Tomorrow - 4 hours)**
 ```typescript
-// Simple implementation:
-setInterval(async () => {
-  const stats = await peerConnection.getStats();
-  const quality = calculateQuality(stats);
-  updateVideoTileIndicator(peerId, quality);
-}, 3000);
+// Enable waiting room
+connection.enableWaitingRoom({
+  mode: 'selective',  // 'all' | 'selective' | 'disabled'
+  autoAdmit: ['teacher', 'admin'],
+  requireApproval: ['student', 'patient_actor']
+})
+
+// Admit from waiting room
+connection.admitParticipant(userId)
+connection.admitAll()
+
+// Events
+connection.on('participant_in_waiting_room', ({ userId, username, role }) => {
+  // Show notification to instructor
+})
 ```
 
-**3. Error Handling (Day 3 - 4 hours)**
-- Add try-catch blocks
-- Friendly error messages
-- Toast notifications
-- Auto-recovery attempts
+**Medical Use Case:** Standardized patients wait in virtual "exam room" before student joins.
 
-**4. Participant Controls (Day 4-5 - 8 hours)**
-- Mute all button (teacher)
-- Hand raise (students)
-- Basic kick function
+#### C. Advanced Permissions & Roles
 
-### Why This Order?
+```typescript
+// Granular permissions
+connection.setParticipantPermissions(userId, {
+  canUnmuteSelf: boolean,
+  canShareScreen: boolean,
+  canEnableVideo: boolean,
+  canChat: boolean,
+  canRaiseHand: boolean,
+  canViewOtherVideos: boolean,  // Blind assessment mode
+  canRecordSession: boolean
+})
 
-1. **Testing First**: Validates current implementation works
-2. **Quality Indicators**: Improves UX with minimal effort
-3. **Error Handling**: Makes app feel professional
-4. **Participant Controls**: Core teaching feature, high ROI
+// Role-based permissions
+type ParticipantRole =
+  | 'instructor'
+  | 'teaching_assistant'
+  | 'student'
+  | 'standardized_patient'
+  | 'observer'
+  | 'guest'
 
-### What NOT to Do Yet:
+connection.setParticipantRole(userId, role)
+```
 
-- ❌ **Recording** - Complex, can wait until core features are solid
-- ❌ **Breakout Rooms** - Very complex, need stable foundation first
-- ❌ **Virtual Backgrounds** - Nice-to-have, not essential
-- ❌ **SFU Architecture** - Only needed for 10+ participants
+**Medical Use Case:** Observer can see/hear but not interact. Standardized patient can't see instructor feedback.
+
+#### D. Polling & Quick Assessments
+
+```typescript
+// Create poll
+connection.createPoll({
+  question: 'What is the most likely diagnosis?',
+  options: [
+    'Myocardial Infarction',
+    'Pulmonary Embolism',
+    'Aortic Dissection',
+    'Pneumothorax'
+  ],
+  allowMultiple: false,
+  anonymous: true,
+  timeLimit: 60  // seconds
+})
+
+// Launch poll
+connection.launchPoll(pollId)
+
+// End poll and show results
+connection.endPoll(pollId, showResults: boolean)
+
+// Events
+connection.on('poll_started', ({ poll }) => {})
+connection.on('poll_results', ({ pollId, results }) => {})
+```
+
+**Medical Use Case:** Quick formative assessment during lecture. "What test would you order next?"
+
+#### E. Non-Verbal Feedback (Reactions)
+
+```typescript
+// Send reaction
+connection.sendReaction(type: 'agree' | 'disagree' | 'confused' | 'slower' | 'faster')
+
+// Events
+connection.on('reaction_received', ({ userId, type, timestamp }) => {
+  // Show floating emoji
+})
+```
+
+**Medical Use Case:** Students can signal if pace is too fast without interrupting.
+
+#### F. Session Recording Management
+
+```typescript
+// Enhanced recording controls
+connection.startRecording({
+  mode: 'speaker' | 'gallery' | 'screen-only' | 'active-speaker',
+  layout: 'grid' | 'sidebar' | 'spotlight',
+  includeChat: boolean,
+  includeReactions: boolean,
+  recordBreakouts: boolean,  // Record all breakouts simultaneously
+  watermark?: {
+    text: 'CONFIDENTIAL - Medical Education',
+    position: 'bottom-right'
+  }
+})
+
+// Pause/Resume recording (for breaks)
+connection.pauseRecording()
+connection.resumeRecording()
+
+// Events
+connection.on('recording_paused', () => {})
+connection.on('recording_resumed', () => {})
+```
+
+**Medical Use Case:** Pause recording during sensitive discussions, resume for teaching content.
+
+#### G. Focus Mode (Minimize Distractions)
+
+```typescript
+// Enable focus mode
+connection.enableFocusMode({
+  disableChat: true,
+  disableReactions: true,
+  disableVideoControls: true,  // Students can't change layout
+  spotlightOnly: true,          // Only see spotlighted participant
+  hideParticipantList: true
+})
+
+connection.disableFocusMode()
+```
+
+**Medical Use Case:** During high-stakes simulation or exam, minimize distractions.
+
+#### H. Attendance Tracking & Reporting
+
+```typescript
+// Track attendance automatically
+connection.on('participant_joined', ({ userId, timestamp }) => {
+  // Log to database
+})
+
+connection.on('participant_left', ({ userId, timestamp, duration }) => {
+  // Calculate attendance
+})
+
+// Generate attendance report
+connection.getAttendanceReport(roomId): Promise<{
+  participants: Array<{
+    userId: string,
+    username: string,
+    joinTime: string,
+    leaveTime: string,
+    duration: number,  // seconds
+    wasLate: boolean,
+    leftEarly: boolean
+  }>
+}>
+```
+
+**Medical Use Case:** Automatic attendance for required lectures. Track who attended entire session.
+
+#### I. Closed Captions / Transcription
+
+```typescript
+// Enable live transcription
+connection.enableTranscription({
+  language: 'en',
+  saveTranscript: true,
+  showLiveCaptions: true
+})
+
+// Events
+connection.on('caption_available', ({ text, speaker, timestamp }) => {
+  // Display caption
+})
+
+connection.on('transcript_ready', ({ url }) => {
+  // Download full transcript
+})
+```
+
+**Medical Use Case:** Accessibility for students with hearing impairments. Review exact wording after lecture.
 
 ---
 
-## 📊 Feature Priority Matrix
+## 📋 Medical Education Feature Comparison
 
-| Feature | Complexity | Value | Time | Priority |
-|---------|-----------|-------|------|----------|
-| Multi-user testing | Low | Critical | 3h | **P0** |
-| Connection quality | Medium | High | 4h | **P0** |
-| Error handling | Medium | High | 4h | **P0** |
-| UI Polish | Low | Medium | 4h | **P1** |
-| Participant controls | Med-High | Very High | 8h | **P1** |
-| Recording | High | Very High | 3d | **P2** |
-| Breakout rooms | Very High | High | 5d | **P3** |
-| Virtual backgrounds | High | Medium | 3d | **P4** |
+### Zoom/Teams Features → Medical Adaptation
 
-**Legend:**
-- P0 = Do this week
-- P1 = Do next week
-- P2 = Do in 2-3 weeks
-- P3 = Do in 1 month
-- P4 = Nice-to-have
+| Zoom/Teams Feature | Medical Education Adaptation | Priority |
+|--------------------|------------------------------|----------|
+| Breakout Rooms | ✅ Small group case discussions, OSCE stations | P0 |
+| Polls | ✅ Formative assessments, audience response | P1 |
+| Waiting Room | ✅ Standardized patient pre-session holding | P2 |
+| Recording | ✅ Lecture capture, skills assessment review | P0 (Done v1.4.0) |
+| Spotlight | ✅ Highlight student presenters, patient cases | P1 |
+| Hand Raise | ✅ Student participation tracking | P0 (Done v1.3.1) |
+| Reactions | ✅ Quick feedback without interrupting | P2 |
+| Mute All | ✅ Classroom management | P0 (Done v1.3.1) |
+| Screen Share | ✅ Medical imaging, EHR demos, slides | P0 (Done v1.2.0) |
+| Chat | ✅ Questions, resource sharing | P0 (Done v1.2.0) |
+| Live Transcription | ✅ Accessibility, lecture review | P3 |
+| Whiteboard | ❌ **NEW:** Collaborative diagram drawing | P2 |
+| Virtual Background | ❌ **Skip:** Not essential for medical ed | P4 |
 
----
+### Medical-Specific Features (Not in Zoom/Teams)
 
-## 🔧 Technical Debt & Optimizations
-
-### Current Known Issues:
-1. **P2P Mesh Limitation**: Works well for 2-6 participants, degrades beyond that
-   - **Solution**: Implement SFU in v2.0 (when needed)
-
-2. **No Bandwidth Adaptation**: Video quality doesn't adjust to network
-   - **Solution**: Implement adaptive bitrate in v1.4.0
-
-3. **No Recovery from Connection Drops**: Peer connections don't auto-recover
-   - **Solution**: Add automatic peer reconnection in v1.3.1
-
-### Performance Optimizations:
-1. Lazy load video components
-2. Debounce stat calculations
-3. Use Web Workers for video processing (backgrounds)
-4. Optimize React re-renders
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **Role Assignment** | Assign clinical roles in simulations | P1 |
+| **Observation Mode** | Silent instructor observation for assessment | P1 |
+| **Help Queue** | Students request help during breakouts | P1 |
+| **Case Distribution** | Auto-assign different cases to breakouts | P2 |
+| **Blind Assessment** | Students can't see instructor/other students | P2 |
+| **OSCE Timer** | Synchronized countdown for exam stations | P2 |
+| **Clinical Scoring** | In-session performance rubric scoring | P3 |
+| **Debrief Mode** | Structured post-simulation reflection | P3 |
 
 ---
 
-## 🎓 Learning & Research Needed
+## 🗺️ Implementation Roadmap
 
-Before implementing:
+### v1.5.0 - Breakout Rooms & Advanced Management (4-6 weeks)
 
-**Recording:**
-- Research MediaRecorder API browser support
-- Investigate cloud storage options (S3, GCS)
-- Study video processing pipelines
+**Week 1-2: Breakout Rooms Core**
+- ✅ Room hierarchy infrastructure
+- ✅ Participant assignment
+- ✅ Movement between rooms
+- ✅ Timer system
+- ✅ Help request queue
 
-**Breakout Rooms:**
-- Study Zoom's breakout room UX
-- Plan data structure for room hierarchy
-- Design participant reassignment logic
+**Week 3: Medical-Specific Breakout Features**
+- ✅ Role assignment
+- ✅ Observation mode
+- ✅ Case distribution
+- ✅ Pre-defined groups
 
-**Virtual Backgrounds:**
-- Test BodyPix performance on target devices
-- Evaluate alternative models (MediaPipe)
-- Benchmark frame rate impact
+**Week 4: Advanced Participant Management**
+- ✅ Spotlight/pin controls
+- ✅ Waiting room
+- ✅ Advanced permissions
+- ✅ Polling system
 
----
+**Week 5: Polish & Testing**
+- ✅ UI/UX refinement
+- ✅ Performance optimization
+- ✅ Comprehensive testing
+- ✅ Documentation
 
-## 📝 Next Steps
+**Week 6: Optional Advanced Features**
+- ⏳ Focus mode
+- ⏳ Attendance tracking
+- ⏳ Live transcription
 
-### Decision Points:
+### v1.6.0 - Clinical Assessment Tools (2-3 weeks)
 
-1. **Agree on Priority Order**
-   - Confirm: Testing → Quality → Errors → Controls?
-   - Or different order?
+- ✅ Structured scoring rubrics
+- ✅ Blind assessment mode
+- ✅ OSCE station rotation
+- ✅ Automated timing and bells
+- ✅ Performance data export
 
-2. **Set Target Date for Recording**
-   - When do teachers need this?
-   - Can we ship v1.3.0 without it?
+### v2.0.0 - AI-Enhanced Features (Future)
 
-3. **Breakout Rooms: Essential or Nice-to-Have?**
-   - If essential: prioritize over recording
-   - If nice-to-have: defer to v1.5.0+
-
-4. **Define "Done" Criteria**
-   - How many participants do we test with?
-   - What's acceptable connection quality?
-   - Mobile support required?
-
-### My Proposal:
-
-**v1.3.0 (Next 2 weeks):**
-- ✅ Multi-user testing complete
-- ✅ Connection quality indicators
-- ✅ Better error handling
-- ✅ Participant controls (mute, kick, hand raise)
-- ✅ UI polish
-
-**v1.4.0 (Month 2):**
-- ✅ Recording (client-side)
-- ✅ Recording management UI
-- ✅ Cloud storage integration
-
-**v1.5.0 (Month 3):**
-- ✅ Breakout rooms
-- ✅ Advanced participant management
-
-**v2.0.0 (Future):**
-- ✅ SFU for 10+ participants
-- ✅ Virtual backgrounds
-- ✅ AI features
+- 🤖 Automated attendance
+- 🤖 Smart transcription with medical terms
+- 🤖 Suggested diagnoses during cases
+- 🤖 Automatic case difficulty assessment
+- 🤖 Learning analytics dashboard
 
 ---
 
-## ❓ Questions for Discussion
+## ❓ Decision Points for Discussion
 
-1. What's the typical class size you're targeting?
-2. Are breakout rooms a must-have or nice-to-have?
-3. When do teachers need recording functionality?
-4. Should we support mobile devices in v1.3.0?
-5. What's your definition of "production ready"?
+### 1. **Breakout Room Priority**
+- **Question:** How critical are breakout rooms for your first deployment?
+- **Options:**
+  - **A:** Critical - delay v1.5.0 launch until breakouts ready
+  - **B:** Nice-to-have - launch v1.5.0 without, add in v1.6.0
+  - **C:** Essential - but can start with basic version
 
-**Let's discuss and finalize the plan before starting implementation!**
+**My Recommendation:** Option C - Start with basic breakout rooms (create, assign, close), add advanced features iteratively.
+
+### 2. **Most Valuable Medical Feature**
+- **Question:** Which medical-specific feature provides most value?
+- **Options:**
+  - Breakout rooms for small group work
+  - Observation mode for assessment
+  - Polling for formative assessment
+  - Waiting room for standardized patients
+
+### 3. **Class Size Target**
+- **Question:** What's typical class size?
+- **Impact:**
+  - 5-15 students → P2P mesh works fine
+  - 15-30 students → Need optimization
+  - 30+ students → Need SFU architecture
+
+### 4. **Recording Enhancements Needed?**
+- **Current:** Client-side recording (works well for single presenter)
+- **Question:** Need to record:
+  - Multiple students simultaneously?
+  - Breakout room sessions?
+  - Different layouts (grid vs spotlight)?
+
+### 5. **Timeline Constraints**
+- **Question:** When do you need breakout rooms in production?
+- **Options:**
+  - Next semester (flexible timeline)
+  - Next month (need MVP quickly)
+  - Next week (urgent need)
+
+---
+
+## 🎯 Recommended Next Steps
+
+### Immediate (This Week):
+
+**1. Review & Decide on Priorities**
+- Which features are must-have vs nice-to-have?
+- What's the target launch date?
+- What's the MVP for breakout rooms?
+
+**2. Test Current v1.4.4 in Real Scenario**
+- Run actual lecture with students
+- Test recording functionality
+- Verify participant controls work
+- Identify pain points
+
+**3. Gather User Feedback**
+- What do teachers need most?
+- What frustrates students?
+- Which Zoom features do they miss?
+
+### Next 2 Weeks:
+
+**4. Start Breakout Rooms MVP**
+- Basic create/assign/close functionality
+- Simple timer system
+- Instructor movement between rooms
+
+**5. Design UI/UX for Breakouts**
+- Mockups for breakout creation
+- Participant assignment interface
+- Breakout monitoring dashboard
+
+**6. Plan Database Schema**
+- Breakout room persistence
+- Participant assignment tracking
+- Session analytics
+
+---
+
+## 📞 Let's Discuss
+
+**I want to understand:**
+
+1. **Your teaching scenarios** - Walk me through a typical medical education session. What happens step-by-step?
+
+2. **Current pain points** - What features from Zoom/Teams do your instructors wish they had?
+
+3. **Student workflow** - What's confusing for students in current system?
+
+4. **Assessment needs** - How do instructors evaluate student performance during sessions?
+
+5. **Priority ranking** - If you could only have 3 new features, which would they be?
+
+**Based on your answers, I'll refine this roadmap and create a detailed implementation plan for the next phase.**
+
+**Ready to discuss? 🎓**
