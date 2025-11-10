@@ -153,21 +153,21 @@ Following best practices from Zoom, Google Meet, and Microsoft Teams:
 └──────────────────┬──────────────────────────────────────────────┘
                    │
     ┌──────────────┼──────────────────┬──────────────────┐
-    │              │                   │                  │
-┌───▼────┐  ┌──────▼──────┐    ┌──────▼──────┐   ┌──────▼──────┐
-│  Room  │  │    Event    │    │    Comms    │   │    Data     │
-│  Mgmt  │  │    Mgmt     │    │    System   │   │    Mgmt     │
-└───┬────┘  └──────┬──────┘    └──────┬──────┘   └──────┬──────┘
-    │              │                   │                  │
-    │              │           ┌───────┴────────┐         │
-    │              │           │                │         │
-    └──────────────┴───────────┤  IN-MEMORY     ├─────────┘
-                               │  (WebSocket)   │
-                               │                │
-                               │ • Participants │
-                               │ • Streams      │
-                               │ • Messages     │
-                               └────────────────┘
+    │              │                  │                  │
+┌───▼────┐  ┌──────▼──────┐    ┌──────▼──────┐    ┌──────▼──────┐
+│  Room  │  │    Event    │    │    Comms    │    │    Data     │
+│  Mgmt  │  │    Mgmt     │    │    System   │    │    Mgmt     │
+└───┬────┘  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
+    │              │                  │                  │
+    │              │          ┌───────┴────────┐         │
+    │              │          │                │         │
+    └──────────────┴──────────┤  IN-MEMORY     ├─────────┘
+                              │  (WebSocket)   │
+                              │                │
+                              │ • Participants │
+                              │ • Streams      │
+                              │ • Messages     │
+                              └────────────────┘
                                        │
                                ┌───────▼────────┐
                                │  PERSISTENT    │
@@ -805,8 +805,8 @@ For licensing inquiries, please contact the repository owner.
 
 For questions, issues, or feature requests:
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/teaching-playground-core/issues)
-- **Email**: support@wolfmed.app
+- **Issues**: [GitHub Issues](https://github.com/wujekbizon/teaching-playground-core)
+- **Email**: grzegorz.wolfinger@gmail.com
 
 ---
 
