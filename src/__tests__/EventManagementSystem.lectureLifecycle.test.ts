@@ -13,9 +13,8 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
   let db: JsonDatabase
 
   beforeEach(async () => {
-    // Use in-memory database for testing
+    // Get database singleton instance
     db = JsonDatabase.getInstance()
-    await db.connect(':memory:')
 
     eventSystem = new EventManagementSystem()
     commsSystem = new RealTimeCommunicationSystem()
@@ -35,8 +34,14 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
   })
 
   afterEach(async () => {
-    // Clean up
-    await db.clearAll()
+    // Clean up test rooms from database
+    try {
+      await db.delete('rooms', { id: 'room-test-1' })
+      await db.delete('rooms', { id: 'room-test-2' })
+      await db.delete('rooms', { id: 'room-test-3' })
+    } catch (error) {
+      // Ignore cleanup errors
+    }
   })
 
   describe('Lecture status transitions and comms system integration', () => {
@@ -49,9 +54,7 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
         date: new Date().toISOString(),
         roomId: 'room-test-1',
         teacherId: 'teacher-1',
-        createdBy: 'teacher-1',
-        description: 'Test description',
-        maxParticipants: 30
+        createdBy: 'teacher-1'
       })
       lectureId = lecture.id
     })
@@ -175,9 +178,7 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
         date: new Date().toISOString(),
         roomId: 'room-test-1',
         teacherId: 'teacher-1',
-        createdBy: 'teacher-1',
-        description: 'Test description',
-        maxParticipants: 30
+        createdBy: 'teacher-1'
       })
       lectureId = lecture.id
     })
@@ -238,8 +239,7 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
         date: new Date().toISOString(),
         roomId: 'room-test-1',
         teacherId: 'teacher-1',
-        createdBy: 'teacher-1',
-        maxParticipants: 30
+        createdBy: 'teacher-1'
       })
 
       const lecture2 = await eventSystem.createEvent({
@@ -247,8 +247,7 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
         date: new Date().toISOString(),
         roomId: 'room-test-2',
         teacherId: 'teacher-2',
-        createdBy: 'teacher-2',
-        maxParticipants: 30
+        createdBy: 'teacher-2'
       })
 
       // Start both lectures
@@ -273,8 +272,7 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
         date: new Date().toISOString(),
         roomId: 'room-test-1',
         teacherId: 'teacher-1',
-        createdBy: 'teacher-1',
-        maxParticipants: 30
+        createdBy: 'teacher-1'
       })
 
       // Start lecture 1
@@ -292,8 +290,7 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
         date: new Date().toISOString(),
         roomId: 'room-test-1',
         teacherId: 'teacher-2',
-        createdBy: 'teacher-2',
-        maxParticipants: 30
+        createdBy: 'teacher-2'
       })
 
       // If lecture 2 is started, it will overwrite the room mapping
@@ -316,7 +313,6 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
         roomId: 'room-test-1',
         teacherId: 'teacher-1',
         createdBy: 'teacher-1',
-        maxParticipants: 30
       })
       lectureId = lecture.id
 
@@ -364,8 +360,7 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
         date: new Date().toISOString(),
         roomId: 'room-test-1',
         teacherId: 'teacher-1',
-        createdBy: 'teacher-1',
-        maxParticipants: 30
+        createdBy: 'teacher-1'
       })
 
       // Should not throw
