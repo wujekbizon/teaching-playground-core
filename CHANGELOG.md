@@ -5,38 +5,90 @@ All notable changes to the Teaching Playground Core package will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2025-11-17
+## [1.4.6] - 2025-11-17
+
+### Fixed - Room Lifecycle Management
+
+**Critical fixes based on production testing with wolfmed application:**
+
+1. **Room Lifecycle Validation (CRITICAL)**
+   - Added lecture status validation before allowing users to join rooms
+   - Users can only join rooms with lectures that are 'active' or 'in-progress'
+   - Prevented re-entry to completed, cancelled, or scheduled lectures
+   - Added `join_room_error` event with detailed error information
+   - Location: `RealTimeCommunicationSystem.ts:259-285`
+
+2. **Room-Lecture Mapping System (HIGH)**
+   - Implemented in-memory tracking of room → lecture relationships
+   - Added `registerLecture()` method - called when lecture starts
+   - Added `updateLectureStatus()` method - called on status changes
+   - Added `unregisterLecture()` method - called when lecture ends
+   - Added `isRoomAvailable()` method - fast validation helper
+   - Integrated with EventManagementSystem for automatic updates
+
+3. **Chat Message Logging (LOW)**
+   - Added console logging for all chat messages
+   - Format: `Chat message from {username} in room {roomId}: {preview}`
+   - Improves debugging and monitoring capabilities
+   - Location: `RealTimeCommunicationSystem.ts:397-401`
+
+### Changed
+
+**EventManagementSystem Integration:**
+- `updateEventStatus()` now calls comms system methods:
+  - `registerLecture()` when status becomes 'in-progress'
+  - `updateLectureStatus()` for other status transitions
+  - `unregisterLecture()` when status becomes 'completed' or 'cancelled'
+- Room availability now tied to lecture lifecycle
+
+**New WebSocket Event:**
+```typescript
+// Emitted when user tries to join unavailable room
+socket.on('join_room_error', {
+  code: 'ROOM_UNAVAILABLE',
+  message: 'This lecture has ended', // or other status messages
+  lectureStatus: 'completed', // current lecture status
+  roomId: string
+})
+```
+
+### Testing
+
+**Validated with production logs from wolfmed application:**
+- ✅ All backend core functionality confirmed working
+- ✅ WebSocket connections, WebRTC signaling, participant controls all functional
+- ✅ Chat broadcasting and rate limiting working correctly
+- ✅ Room lifecycle now properly managed
+- ✅ Cannot join completed/cancelled lectures
+
+**See:** `TESTING-ANALYSIS-2025-11-17.md` for detailed test scenarios and results
+
+### Frontend Requirements
+
+**Application teams must implement these event handlers:**
+
+1. Handle `join_room_error` event (HIGH PRIORITY)
+   ```typescript
+   connection.on('join_room_error', ({ code, message, lectureStatus }) => {
+     showError(message)
+     redirectToLectures()
+   })
+   ```
+
+2. Implement mute event handlers (see TESTING-ANALYSIS for details)
+3. Fix kicked user video cleanup (see TESTING-ANALYSIS for details)
 
 ### Documentation
 
 **Added:**
-- `WEBSOCKET-FLOW.md` - Complete WebSocket backend technical flow documentation
+- `WEBSOCKET-FLOW.md` - Complete WebSocket technical flow documentation
 - `TESTING-ANALYSIS-2025-11-17.md` - Comprehensive production testing analysis
 
-**Summary:**
+---
 
-Production testing with wolfmed application validated that all backend core functionality is working correctly. WebSocket connections, WebRTC signaling, participant controls, chat, and room management all perform as expected.
+## [Unreleased]
 
-**Backend Status:** ✅ Production-ready
-- All WebSocket events working correctly
-- WebRTC signaling flawless
-- Participant controls functioning (mute, kick, hand raise)
-- Chat broadcasting working
-- Rate limiting working
-
-**Issues Identified:**
-
-Backend (v1.4.6 planned):
-1. Missing chat message logging (LOW)
-2. Room lifecycle validation needed (CRITICAL)
-3. Room-lecture mapping tracking (HIGH)
-
-Frontend (application team):
-1. Mute event handlers not implemented (HIGH)
-2. Kicked user video cleanup incomplete (MEDIUM)
-3. Room re-entry prevention needed (HIGH)
-
-See `TESTING-ANALYSIS-2025-11-17.md` for detailed analysis, code examples, and implementation guidance
+(No unreleased changes)
 
 ---
 

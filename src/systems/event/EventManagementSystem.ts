@@ -214,9 +214,20 @@ export class EventManagementSystem {
 
         console.log(`Room ${event.roomId} status updated to ${roomStatus} after lecture status change to ${newStatus}`)
 
-        // v1.1.3: Clear room ephemeral data when lecture ends (completed or cancelled)
-        if ((newStatus === 'completed' || newStatus === 'cancelled') && this.commsSystem) {
-          this.commsSystem.clearRoom(event.roomId)
+        // v1.4.6: Update comms system with lecture status and room availability
+        if (this.commsSystem) {
+          if (newStatus === 'in-progress') {
+            // Register lecture when it becomes active
+            this.commsSystem.registerLecture(eventId, event.roomId, newStatus)
+          } else if (newStatus === 'completed' || newStatus === 'cancelled') {
+            // v1.1.3: Clear room ephemeral data when lecture ends
+            this.commsSystem.clearRoom(event.roomId)
+            // v1.4.6: Unregister lecture to prevent re-entry
+            this.commsSystem.unregisterLecture(eventId)
+          } else {
+            // Update lecture status for other transitions
+            this.commsSystem.updateLectureStatus(eventId, newStatus)
+          }
         }
       }
 

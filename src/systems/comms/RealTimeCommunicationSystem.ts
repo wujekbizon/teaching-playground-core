@@ -41,6 +41,13 @@ interface RateLimitEntry {
   resetAt: number
 }
 
+// v1.4.6: Interface for tracking lecture information
+interface LectureInfo {
+  id: string
+  status: 'scheduled' | 'delayed' | 'active' | 'in-progress' | 'completed' | 'cancelled'
+  roomId: string
+}
+
 export class RealTimeCommunicationSystem extends EventEmitter {
   private io: SocketIOServer | null = null
   private rooms: Map<string, Map<string, RoomParticipant>> = new Map()
@@ -50,6 +57,10 @@ export class RealTimeCommunicationSystem extends EventEmitter {
   private cleanupInterval: NodeJS.Timeout | null = null
   private messageLimiter: Map<string, RateLimitEntry> = new Map()
   private messageSequence: Map<string, number> = new Map()
+
+  // v1.4.6: Room-lecture mapping for fast validation
+  private roomLectureMap: Map<string, string> = new Map() // roomId → lectureId
+  private lectureLookup: Map<string, LectureInfo> = new Map() // lectureId → lecture info
 
   // Configuration
   private readonly INACTIVE_THRESHOLD = 30 * 60 * 1000 // 30 minutes
@@ -247,6 +258,32 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
   private handleJoinRoom(socket: any, roomId: string, user: User) {
     try {
+      // v1.4.6: Validate lecture status before allowing join
+      const lectureId = this.roomLectureMap.get(roomId)
+      if (lectureId) {
+        const lecture = this.lectureLookup.get(lectureId)
+        if (lecture) {
+          // Only allow joining if lecture is active or in-progress
+          if (lecture.status !== 'active' && lecture.status !== 'in-progress') {
+            const statusMessages = {
+              'completed': 'This lecture has ended',
+              'cancelled': 'This lecture has been cancelled',
+              'scheduled': 'This lecture has not started yet'
+            }
+            const message = statusMessages[lecture.status as keyof typeof statusMessages] || 'This lecture is not available'
+
+            console.log(`User ${user.username} denied entry to room ${roomId} - Lecture status: ${lecture.status}`)
+            socket.emit('join_room_error', {
+              code: 'ROOM_UNAVAILABLE',
+              message,
+              lectureStatus: lecture.status,
+              roomId
+            })
+            return
+          }
+        }
+      }
+
       socket.join(roomId)
 
       if (!this.rooms.has(roomId)) {
@@ -393,6 +430,12 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       }
 
       this.updateRoomActivity(roomId)
+
+      // v1.4.6: Log chat messages for debugging
+      const preview = message.content.length > 50
+        ? `${message.content.substring(0, 50)}...`
+        : message.content
+      console.log(`Chat message from ${message.username} in room ${roomId}: ${preview}`)
 
       // Broadcast to room (not in room_state!)
       this.io!.to(roomId).emit('new_message', fullMessage)
@@ -827,6 +870,65 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     }
 
     console.log(`Hand lowered by ${userId} in room ${roomId}`)
+  }
+
+  /**
+   * v1.4.6: Register a lecture for a room
+   * Called when lecture starts (status becomes 'active' or 'in-progress')
+   */
+  registerLecture(lectureId: string, roomId: string, status: LectureInfo['status']): void {
+    this.roomLectureMap.set(roomId, lectureId)
+    this.lectureLookup.set(lectureId, { id: lectureId, status, roomId })
+    console.log(`Registered lecture ${lectureId} for room ${roomId} with status '${status}'`)
+  }
+
+  /**
+   * v1.4.6: Update lecture status
+   * Called when lecture status changes
+   */
+  updateLectureStatus(lectureId: string, status: LectureInfo['status']): void {
+    const lecture = this.lectureLookup.get(lectureId)
+    if (lecture) {
+      lecture.status = status
+      console.log(`Updated lecture ${lectureId} status to '${status}'`)
+    } else {
+      console.warn(`Attempted to update status for unknown lecture ${lectureId}`)
+    }
+  }
+
+  /**
+   * v1.4.6: Unregister a lecture
+   * Called when lecture ends (completed/cancelled)
+   */
+  unregisterLecture(lectureId: string): void {
+    const lecture = this.lectureLookup.get(lectureId)
+    if (lecture) {
+      this.roomLectureMap.delete(lecture.roomId)
+      this.lectureLookup.delete(lectureId)
+      console.log(`Unregistered lecture ${lectureId} from room ${lecture.roomId}`)
+    } else {
+      console.warn(`Attempted to unregister unknown lecture ${lectureId}`)
+    }
+  }
+
+  /**
+   * v1.4.6: Check if a room is available for joining
+   * Returns true if lecture is active/in-progress, false otherwise
+   */
+  isRoomAvailable(roomId: string): boolean {
+    const lectureId = this.roomLectureMap.get(roomId)
+    if (!lectureId) {
+      // No lecture registered for this room
+      return false
+    }
+
+    const lecture = this.lectureLookup.get(lectureId)
+    if (!lecture) {
+      return false
+    }
+
+    // Room is available only if lecture is active or in-progress
+    return lecture.status === 'active' || lecture.status === 'in-progress'
   }
 
   async shutdown(): Promise<void> {
