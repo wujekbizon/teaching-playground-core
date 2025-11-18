@@ -23,6 +23,7 @@
     "node_modules",
     "dist",
     "tests",
+    "src/__tests__",
     "src/__tests_backup"
   ]
 }

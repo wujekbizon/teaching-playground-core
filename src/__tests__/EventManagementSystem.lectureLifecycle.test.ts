@@ -375,8 +375,7 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
         date: new Date().toISOString(),
         roomId: 'room-test-1',
         teacherId: 'teacher-1',
-        createdBy: 'teacher-1',
-        maxParticipants: 30
+        createdBy: 'teacher-1'
       })
 
       // Mock comms system to throw error
