@@ -5,6 +5,136 @@ All notable changes to the Teaching Playground Core package will be documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+No unreleased changes.
+
+## [2.1.0] - 2026-08-03
+
+### Added
+
+- Added a private React/Vite classroom harness under
+  `examples/classroom-harness` that consumes only the package's public API.
+- Added authenticated connection setup for server URL, room, display name,
+  teacher/student/admin role, and Socket.IO handshake token.
+- Added real browser camera and microphone acquisition with local preview,
+  device track toggles, screen sharing, and client-side recording download.
+- Added multi-peer video rendering and WebRTC setup for initial room state and
+  newly joined participants.
+- Added participant state, teacher mute controls, hand raising, chat history,
+  live chat, and automatic participant/media cleanup on leave.
+- Added a bounded event inspector for incoming, outgoing, and local diagnostic
+  events to make browser negotiation and lifecycle bugs reproducible.
+- Added root `harness:dev` and `harness:build` scripts plus an acceptance-flow
+  guide for two-tab teacher/student testing.
+
+### Changed
+
+- Updated the root README with classroom harness installation, startup,
+  authentication, and multi-tab usage instructions.
+
+### Validation
+
+- Core TypeScript build, ESLint, and Jest checks continue to pass.
+- Harness dependency installation is currently blocked in the validation
+  container by npm registry HTTP 403 policy; the harness build command is in
+  place for connected development and CI environments.
+
+## [2.0.0] - 2026-08-03
+
+This major release completes the P0, P1, and immediately actionable P2 work
+identified by the repository baseline audit. The major version bump reflects
+intentional public API and runtime lifecycle changes rather than treating the
+stabilization work as a backward-compatible patch.
+
+### Security
+
+- Added pluggable Socket.IO handshake identity resolution through
+  `CommsConfig.identityProvider` and a fail-fast `requireAuthentication` mode.
+- Bound room controls, hand raising, recording notifications, chat authorship,
+  message history, streaming, and WebRTC signaling to the requesting socket's
+  authenticated identity and actual room membership.
+- Stopped trusting client-provided `requesterId`, `userId`, `teacherId`, role,
+  username, and chat-author fields for authorization decisions in protected
+  deployments.
+- Added integration tests for invalid credentials, forged join identities, and
+  attempted privilege escalation by a student.
+- Fixed facade authorization checks so rejected users cannot continue into
+  lecture mutations or create side effects.
+
+### Added
+
+- Added `PersistenceAdapter` injection for replacing `JsonDatabase` without
+  rewriting room or lecture APIs.
+- Added `CommsConfig.socketAdapter` for multi-process Socket.IO deployments.
+- Added `RoomConnectionOptions.auth` for handshake credentials.
+- Added `RoomConnectionOptions.rtcConfiguration` and configurable
+  `WebRTCService` ICE servers, including host-provided TURN credentials.
+- Added real communication initialization, shutdown, teardown, and observable
+  health state to the `TeachingPlayground` facade.
+- Added an ESLint 9 flat configuration.
+- Added `BASELINE-AUDIT.md` with the pre-remediation evidence, priorities, and
+  follow-up validation results.
+
+### Changed
+
+- `TeachingPlayground.initialize()` now accepts a Node HTTP server and starts
+  its owned Socket.IO system. It no longer accepts a playground config object.
+- `TeachingPlayground.shutdown()` is asynchronous and shuts down sockets,
+  timers, and ephemeral state.
+- `TeachingPlayground.disconnectCommunication()` is asynchronous and performs
+  real resource teardown.
+- `TeachingPlayground.getSystemStatus()` now reports initialization and
+  unimplemented data-management state instead of returning constant healthy
+  values.
+- `saveState()`, `loadState()`, and `restartSystem()` now fail explicitly with
+  `METHOD_NOT_IMPLEMENTED` instead of silently logging success.
+- `RoomManagementSystem` and `EventManagementSystem` now receive shared comms
+  and persistence dependencies from the composition root.
+- Room and lecture IDs now use UUIDs, preventing same-millisecond collisions.
+- The standalone server now shuts down the comms system gracefully and no
+  longer starts merely because `src/server.ts` was imported.
+- The cleanup interval is unreferenced and fully cleared during shutdown.
+- Updated package documentation to cover authentication, persistence,
+  Socket.IO adapters, lifecycle ownership, and STUN/TURN configuration.
+
+### Fixed
+
+- Eliminated split participant/resource state caused by multiple independent
+  `RealTimeCommunicationSystem` instances.
+- Replaced the flaky callback-driven complete-classroom test with deterministic
+  promise-based event sequencing.
+- Isolated lifecycle test data and completed comms mocks to remove cross-test
+  failures and open-handle warnings.
+- Restored the package smoke pipeline and made it run Jest serially.
+- Rewrote the fresh-consumer fixture against the current public API, removed
+  suppressed failures, and added temporary-directory cleanup.
+
+### Breaking Changes and Migration
+
+1. Pass the HTTP server to `playground.initialize(httpServer)` and `await
+   playground.shutdown()` during application shutdown.
+2. `await playground.disconnectCommunication(roomId)` when explicitly tearing
+   down communication state.
+3. Protected deployments must provide `commsConfig.identityProvider` and set
+   `requireAuthentication: true`; clients should pass credentials through the
+   fourth `RoomConnection` constructor argument.
+4. Callers of `saveState`, `loadState`, or `restartSystem` must migrate to a
+   `PersistenceAdapter` or explicit host lifecycle logic.
+5. Hosts needing TURN should pass a complete `RTCConfiguration` through
+   `RoomConnectionOptions.rtcConfiguration`.
+
+### Validation
+
+- TypeScript build passes.
+- ESLint passes.
+- 16 Jest suites and 231 tests pass, including three consecutive serial
+  stability runs without open-handle warnings.
+- Package build, declaration generation, tarball creation, and dry-run package
+  inspection pass.
+- The consumer fixture now reports dependency-installation failures; registry
+  access in the validation container remains restricted by HTTP 403 policy.
+
 ## [1.4.6] - 2025-11-17
 
 ### Fixed - Room Lifecycle Management
@@ -105,14 +235,6 @@ socket.on('join_room_error', {
 **Added:**
 - `WEBSOCKET-FLOW.md` - Complete WebSocket technical flow documentation
 - `TESTING-ANALYSIS-2025-11-17.md` - Comprehensive production testing analysis
-
----
-
-## [Unreleased]
-
-(No unreleased changes)
-
----
 
 ## [1.4.5] - 2025-11-10
 

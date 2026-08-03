@@ -19,6 +19,11 @@ interface StreamState {
   quality: 'low' | 'medium' | 'high'
 }
 
+export interface RoomConnectionOptions {
+  auth?: Record<string, unknown>
+  rtcConfiguration?: RTCConfiguration
+}
+
 export class RoomConnection extends EventEmitter {
   private socket: Socket | null = null
   private webrtc: WebRTCService
@@ -49,10 +54,11 @@ export class RoomConnection extends EventEmitter {
   constructor(
     private roomId: string,
     private user: User,
-    private serverUrl: string
+    private serverUrl: string,
+    private options: RoomConnectionOptions = {}
   ) {
     super()
-    this.webrtc = new WebRTCService()
+    this.webrtc = new WebRTCService(options.rtcConfiguration)
     this.setupWebRTCEvents()
   }
 
@@ -109,7 +115,8 @@ export class RoomConnection extends EventEmitter {
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
       reconnectionDelay: this.reconnectDelay,
-      timeout: 10000
+      timeout: 10000,
+      auth: this.options.auth,
     })
 
     this.setupSocketListeners()
@@ -351,7 +358,7 @@ export class RoomConnection extends EventEmitter {
   disconnect() {
     console.log('Initiating disconnect sequence')
     this.shouldReconnect = false
-    
+
     // 1. Clean up WebRTC
     this.webrtc.closeAllConnections()
     console.log('WebRTC connections closed')
@@ -415,10 +422,10 @@ export class RoomConnection extends EventEmitter {
     }
 
     console.log('Stopping stream')
-    
+
     // Emit a stream_status_change event before sending to the server
     this.emit('stream_status_change', { isStreaming: false, userId: this.user.id, username: this.user.username });
-    
+
     this.socket.emit('stop_stream', this.roomId)
     this.webrtc.closeAllConnections()
   }
@@ -493,7 +500,7 @@ export class RoomConnection extends EventEmitter {
     peerId: string,
     localStream?: MediaStream | null
   ): Promise<RTCPeerConnection> {
-    const iceServers = {
+    const iceServers: RTCConfiguration = this.options.rtcConfiguration ?? {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
@@ -1015,4 +1022,4 @@ export class RoomConnection extends EventEmitter {
     // Fallback
     return 'video/webm'
   }
-} 
+}

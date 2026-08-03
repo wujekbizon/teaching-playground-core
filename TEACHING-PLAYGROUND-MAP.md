@@ -1,18 +1,18 @@
 # Teaching Playground Core — Full Repository Map
 
-> Purpose of this document: a complete, self-contained map of `teaching-playground-core` (v1.4.6) — what it is, how it's built, and how every piece fits together — written to support integrating this service into **wolfmed-edu**. This repo is *already* the backend that wolfmed uses/tested against (see CHANGELOG v1.4.6: "Validated with production logs from wolfmed application").
+> Purpose of this document: a complete, self-contained map of `teaching-playground-core` (v2.1.0) — what it is, how it's built, and how every piece fits together — written to support integrating this service into **wolfmed-edu**. This repo is *already* the backend that wolfmed uses/tested against (see CHANGELOG v1.4.6: "Validated with production logs from wolfmed application").
 
 ---
 
 ## 1. What This Repo Is
 
-**`@teaching-playground/core`** is a standalone, publishable npm package (currently privately licensed, not on public npm) that implements the **entire backend + client SDK for a real-time virtual classroom**: WebSocket signaling server, WebRTC video/audio, text chat, lecture/room lifecycle management, participant controls, and client-side recording.
+**`@teaching-playground/core`** is a standalone, published npm package that implements the **entire backend + client SDK for a real-time virtual classroom**: WebSocket signaling server, WebRTC video/audio, text chat, lecture/room lifecycle management, participant controls, and client-side recording.
 
 It is designed to be **installed as a dependency** into a host application (like wolfmed-edu) rather than run standalone — though it *can* run standalone via `src/server.ts`.
 
 - **Package name:** `@teaching-playground/core`
-- **Version:** 1.4.6
-- **License:** Privately licensed, all rights reserved (author: WESA)
+- **Version:** 2.1.0
+- **License:** MIT (author: WESA)
 - **Repo:** `github.com/wujekbizon/teaching-playground-core`
 - **Module type:** ESM (`"type": "module"`), compiled TypeScript → `dist/`
 - **Entry points:** `main: dist/index.js`, `types: dist/index.d.ts`
@@ -91,6 +91,8 @@ teaching-playground-core/
 ├── scripts/
 │   ├── test-package.sh                 # build → pack → install into temp dir → smoke test
 │   └── test-in-project.sh              # integration test against a scratch consumer project
+├── examples/
+│   └── classroom-harness/              # React/Vite browser harness for real media + event testing
 ├── .env.example                        # PORT, NEXT_PUBLIC_WS_URL, ALLOWED_ORIGINS, rate-limit/cleanup knobs
 ├── package.json / pnpm-lock.yaml / tsconfig.json / jest.config.js
 └── Docs (see §8 below): README.md, CHANGELOG.md, IMPLEMENTATION-PLAN.md,

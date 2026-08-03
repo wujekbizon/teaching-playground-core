@@ -139,6 +139,22 @@ node -e "console.log(require('@teaching-playground/core'))"
 
 ## Version Management
 
+### Required Release Tracking
+
+Every substantial completed task must add a dated entry to `CHANGELOG.md` and
+select a Semantic Versioning increment before the change is merged:
+
+1. Record user-visible additions, changes, fixes, security work, deprecations,
+   and breaking migration steps under the new version.
+2. Choose `patch` for backward-compatible fixes, `minor` for backward-compatible
+   features, or `major` for any breaking public API or behavior change.
+3. Update `package.json` with `npm version <major|minor|patch>
+   --no-git-tag-version` while preparing the change. Create the release tag only
+   when the release is actually published.
+4. Keep an empty `Unreleased` section at the top of the changelog for work that
+   has not yet been assigned to a release.
+5. Run the complete package and fresh-consumer checks before publishing.
+
 ### Understanding Semantic Versioning
 
 Version format: `MAJOR.MINOR.PATCH` (e.g., `1.0.2`)

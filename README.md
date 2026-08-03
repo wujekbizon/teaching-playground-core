@@ -283,6 +283,9 @@ const playground = new TeachingPlayground({
   eventConfig: {},
   dataConfig: {},
 });
+
+// When using the facade as the Socket.IO host, initialize it with your HTTP server.
+playground.initialize(httpServer);
 ```
 
 ### 3. Set Current User
@@ -303,7 +306,7 @@ playground.setCurrentUser(teacher);
 ### 4. Create a Classroom
 
 ```typescript
-const classroom = playground.createClassroom({
+const classroom = await playground.createClassroom({
   name: 'Biology 101 - Spring 2025',
   capacity: 30,
   features: {
@@ -344,7 +347,8 @@ const student = {
 const connection = new RoomConnection(
   classroom.id,
   student,
-  'ws://localhost:3001'
+  'ws://localhost:3001',
+  { auth: { token: sessionToken } }
 );
 
 // Event listeners
@@ -379,6 +383,28 @@ const stream = await navigator.mediaDevices.getUserMedia({
 // Start streaming
 await connection.startStream(stream, 'high');
 ```
+
+## Browser Classroom Harness
+
+An internal React/Vite harness lives in `examples/classroom-harness`. It uses
+only the public `@teaching-playground/core` API and is intended for real-browser
+validation of camera/microphone permissions, multi-tab WebRTC, chat, participant
+controls, screen sharing, recording, and lifecycle cleanup.
+
+```bash
+# Terminal 1: standalone Socket.IO server
+pnpm server:dev
+
+# Terminal 2: install the example once, then run it
+pnpm --dir examples/classroom-harness install
+pnpm harness:dev
+```
+
+Open `http://localhost:5173` in two tabs, choose different names/roles, and join
+the same room. The Events panel records received and emitted classroom events to
+make negotiation and cleanup problems reproducible. For protected deployments,
+provide a real token and configure the server's `identityProvider`; the harness
+passes the token through the Socket.IO handshake.
 
 ### 8. Record Lecture (v1.4.0)
 
@@ -441,6 +467,24 @@ connection.on('hand_raised', ({ userId, username }) => {
 new TeachingPlayground(config: TeachingPlaygroundConfig)
 ```
 
+`TeachingPlaygroundConfig.persistence` accepts a `PersistenceAdapter`, allowing a
+host application to replace the default JSON store without changing room or
+lecture APIs. `commsConfig.identityProvider` resolves server-trusted socket
+identity from handshake authentication data. Set `requireAuthentication: true`
+for protected deployments; startup fails if no identity provider is supplied.
+`commsConfig.socketAdapter` accepts a Socket.IO-compatible adapter constructor
+when room broadcasts need to span multiple processes.
+
+```typescript
+const playground = new TeachingPlayground({
+  persistence: postgresAdapter,
+  commsConfig: {
+    requireAuthentication: true,
+    identityProvider: async ({ auth }) => verifySessionToken(String(auth.token)),
+  },
+});
+```
+
 #### Methods
 
 **User Management**
@@ -480,9 +524,16 @@ getSystemStatus(): SystemStatus
 new RoomConnection(
   roomId: string,
   user: User,
-  serverUrl: string
+  serverUrl: string,
+  options?: {
+    auth?: Record<string, unknown>;
+    rtcConfiguration?: RTCConfiguration;
+  }
 )
 ```
+
+Use `rtcConfiguration.iceServers` to provide production STUN/TURN servers. The
+default remains public STUN-only for local development.
 
 #### Methods
 
