@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.1.1] - 2026-08-03
+
+### Security
+
+- Restricted the standalone server's Socket.IO CORS policy to explicitly
+  configured origins instead of accepting every origin.
+- Added an opt-in development identity provider for the classroom harness and
+  made it refuse to start in production mode.
+
+### Fixed
+
+- Consolidated `RoomConnection` on the server-supported `webrtc:*` signaling
+  contract and included the required room identifier in offers.
+- Joined the Socket.IO room before reporting the SDK connection as ready,
+  preventing the first offer from racing server-side membership validation.
+- Automatically created peer connections for incoming offers, queued early ICE
+  candidates until a remote description exists, and cleaned up all peers on
+  room clear, stream stop, or disconnect.
+- Delegated reconnect timing to Socket.IO rather than running a second SDK
+  reconnect loop.
+- Fixed the classroom harness Node TypeScript configuration and allowed joining
+  without camera or microphone access.
+
+### Changed
+
+- Removed unused tRPC, simple-peer, EventEmitter, UUID, and obsolete Socket.IO
+  type packages from the production/development dependency graph.
+- Aligned Jest runtime packages on major version 29 and aligned local
+  TypeScript-ESLint specifications with the lockfile's installed patch version.
+- Updated the harness to let `RoomConnection` own peer negotiation and surface
+  join, connection, and WebRTC errors in its event inspector.
+
+### Validation
+
+- Added a real Socket.IO server/client signaling regression test proving that
+  an SDK offer is accepted and relayed after room membership is established.
+- 17 Jest suites and 233 tests pass, together with TypeScript and ESLint.
+- Dependency release discovery remains unavailable in this environment because
+  the configured npm registry returns HTTP 403. All locally resolvable packages
+  were audited, unused packages were removed, and compatible test dependencies
+  were aligned without claiming unverifiable latest-version upgrades.
+
 ## [2.1.0] - 2026-08-03
 
 ### Added

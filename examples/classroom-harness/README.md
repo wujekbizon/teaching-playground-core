@@ -11,7 +11,9 @@ pnpm dev
 ```
 
 The default server URL is `http://localhost:3001`. Start the core standalone
-server from the repository root with `pnpm server:dev`.
+server from the repository root with
+`DEV_AUTH_ENABLED=true pnpm server:dev`. Use unique `role:name` tokens in each
+tab, such as `teacher:maya` and `student:alex`.
 
 ## First acceptance flow
 

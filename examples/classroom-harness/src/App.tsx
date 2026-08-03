@@ -21,6 +21,7 @@ const eventNames = [
   'user_left', 'remote_stream_added', 'stream_started', 'stream_stopped',
   'hand_raised', 'hand_lowered', 'mute_all', 'muted_by_teacher',
   'participant_kicked', 'kicked_from_room', 'room_cleared', 'room_closed',
+  'join_room_error', 'connection_error', 'webrtc_error',
   'lecture_recording_started', 'lecture_recording_stopped', 'error',
 ]
 
@@ -32,7 +33,7 @@ const stringify = (value: unknown) => {
 export default function App() {
   const [serverUrl, setServerUrl] = useState('http://localhost:3001')
   const [roomId, setRoomId] = useState('clinical-skills-101')
-  const [token, setToken] = useState('teacher')
+  const [token, setToken] = useState('teacher:maya')
   const [name, setName] = useState('Dr. Maya Chen')
   const [role, setRole] = useState<User['role']>('teacher')
   const [connected, setConnected] = useState(false)
@@ -88,31 +89,27 @@ export default function App() {
     return stream
   }
 
-  const connect = async () => {
+  const connect = async (withMedia = true) => {
     if (connectionRef.current) return
     try {
-      const stream = await ensureMedia()
+      const stream = withMedia ? await ensureMedia() : null
       const connection = new RoomConnection(roomId, user, serverUrl, { auth: { token } })
       connectionRef.current = connection
 
       eventNames.forEach(event => connection.on(event, (payload: unknown) => addLog('in', event, payload)))
-      connection.on('connected', () => setConnected(true))
-      connection.on('disconnected', () => setConnected(false))
-      connection.on('room_state', async ({ participants: roomParticipants }: { participants: Participant[] }) => {
-        setParticipants(roomParticipants)
-        for (const participant of roomParticipants) {
-          if (participant.id !== user.id && participant.socketId) {
-            await connection.setupPeerConnection(participant.socketId, stream)
-          }
+      connection.on('connected', () => {
+        setConnected(true)
+        if (stream) {
+          void connection.startStream(stream).catch(error => addLog('system', 'stream_failed', error))
         }
       })
-      connection.on('user_joined', async (participant: Participant) => {
+      connection.on('disconnected', () => setConnected(false))
+      connection.on('room_state', ({ participants: roomParticipants }: { participants: Participant[] }) => {
+        setParticipants(roomParticipants)
+      })
+      connection.on('user_joined', (participant: Participant) => {
         const normalized = { ...participant, id: participant.userId ?? participant.id }
         setParticipants(current => [...current.filter(item => item.id !== normalized.id), normalized])
-        if (participant.socketId) {
-          await connection.setupPeerConnection(participant.socketId, stream)
-          await connection.createOffer(participant.socketId)
-        }
       })
       connection.on('user_left', (participant: Participant) => {
         setParticipants(current => current.filter(item => item.socketId !== participant.socketId))
@@ -203,7 +200,8 @@ export default function App() {
           <label>Role<select value={role} onChange={event => setRole(event.target.value as User['role'])} disabled={connected}><option value="teacher">Teacher</option><option value="student">Student</option><option value="admin">Admin</option></select></label>
           <label>Auth token<input value={token} onChange={event => setToken(event.target.value)} type="password" disabled={connected} /></label>
         </div>
-        <button className={`primary ${connected ? 'danger' : ''}`} onClick={connected ? disconnect : connect}>{connected ? 'Leave classroom' : 'Join classroom'}</button>
+        <button className={`primary ${connected ? 'danger' : ''}`} onClick={() => connected ? disconnect() : void connect(true)}>{connected ? 'Leave classroom' : 'Join with camera'}</button>
+        {!connected && <button className="secondary" onClick={() => void connect(false)}>Join without media</button>}
         <div className="setup-note"><span>i</span><p>Open a second tab with another role to test peer media and participant controls.</p></div>
       </aside>
 

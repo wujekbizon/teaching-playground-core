@@ -392,8 +392,8 @@ validation of camera/microphone permissions, multi-tab WebRTC, chat, participant
 controls, screen sharing, recording, and lifecycle cleanup.
 
 ```bash
-# Terminal 1: standalone Socket.IO server
-pnpm server:dev
+# Terminal 1: standalone Socket.IO server with development test identities
+DEV_AUTH_ENABLED=true pnpm server:dev
 
 # Terminal 2: install the example once, then run it
 pnpm --dir examples/classroom-harness install
@@ -405,6 +405,10 @@ the same room. The Events panel records received and emitted classroom events to
 make negotiation and cleanup problems reproducible. For protected deployments,
 provide a real token and configure the server's `identityProvider`; the harness
 passes the token through the Socket.IO handshake.
+
+Development tokens use `role:name` (for example, `teacher:maya` and
+`student:alex`). Development authentication is rejected when `NODE_ENV` is
+`production`.
 
 ### 8. Record Lecture (v1.4.0)
 

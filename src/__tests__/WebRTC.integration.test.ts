@@ -179,6 +179,8 @@ describe('WebRTC Integration Tests (v1.2.0)', () => {
 
       jest.spyOn(pc1, 'addIceCandidate').mockResolvedValue()
       jest.spyOn(pc2, 'addIceCandidate').mockResolvedValue()
+      ;(pc1 as any).remoteDescription = { type: 'answer', sdp: 'remote' }
+      ;(pc2 as any).remoteDescription = { type: 'offer', sdp: 'remote' }
 
       // Peer 1 sends candidate to Peer 2
       await peer2.handleWebRTCIceCandidate('peer-1', mockCandidate1)
@@ -387,12 +389,11 @@ describe('WebRTC Integration Tests (v1.2.0)', () => {
       )
     })
 
-    it('should throw error when handling offer without peer connection', async () => {
+    it('should create a connection when an offer arrives before peer setup', async () => {
       const mockOffer = { type: 'offer', sdp: 'mock-sdp' } as RTCSessionDescriptionInit
 
-      await expect(peer1.handleWebRTCOffer('non-existent-peer', mockOffer)).rejects.toThrow(
-        'No peer connection found for non-existent-peer'
-      )
+      await expect(peer1.handleWebRTCOffer('new-peer', mockOffer)).resolves.toBeUndefined()
+      expect((peer1 as any).peerConnections.has('new-peer')).toBe(true)
     })
 
     it('should throw error when handling answer without peer connection', async () => {

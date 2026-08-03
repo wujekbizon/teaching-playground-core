@@ -1,4 +1,7 @@
 node_modules
+*.tsbuildinfo
+examples/classroom-harness/vite.config.js
+examples/classroom-harness/vite.config.d.ts
 
 dist/
 
