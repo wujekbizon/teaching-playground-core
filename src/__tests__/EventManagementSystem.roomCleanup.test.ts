@@ -46,7 +46,10 @@ describe('EventManagementSystem - Room Cleanup Integration (v1.1.3)', () => {
       getRoomParticipants: jest.fn(),
       setupForRoom: jest.fn(),
       allocateResources: jest.fn(),
-      deallocateResources: jest.fn()
+      deallocateResources: jest.fn(),
+      registerLecture: jest.fn(),
+      updateLectureStatus: jest.fn(),
+      unregisterLecture: jest.fn()
     } as any
 
     eventSystem = new EventManagementSystem()

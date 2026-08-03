@@ -178,6 +178,7 @@ describe('RoomConnection - WebRTC Features (v1.2.0)', () => {
       })
       expect(pc.setLocalDescription).toHaveBeenCalledWith(mockOffer)
       expect(mockSocket.emit).toHaveBeenCalledWith('webrtc:offer', {
+        roomId: 'room-123',
         targetPeerId: 'peer-123',
         offer: pc.localDescription,
       })
@@ -212,12 +213,11 @@ describe('RoomConnection - WebRTC Features (v1.2.0)', () => {
       })
     })
 
-    it('should throw error if peer connection not found', async () => {
+    it('should create a peer connection when an offer arrives first', async () => {
       const mockOffer = { type: 'offer', sdp: 'mock-sdp' } as RTCSessionDescriptionInit
 
-      await expect(connection.handleWebRTCOffer('non-existent-peer', mockOffer)).rejects.toThrow(
-        'No peer connection found for non-existent-peer'
-      )
+      await expect(connection.handleWebRTCOffer('new-peer', mockOffer)).resolves.toBeUndefined()
+      expect((connection as any).peerConnections.has('new-peer')).toBe(true)
     })
   })
 
@@ -254,6 +254,7 @@ describe('RoomConnection - WebRTC Features (v1.2.0)', () => {
       } as RTCIceCandidateInit
 
       jest.spyOn(pc, 'addIceCandidate').mockResolvedValue()
+      ;(pc as any).remoteDescription = { type: 'offer', sdp: 'remote' }
 
       await connection.handleWebRTCIceCandidate('peer-123', mockCandidate)
 
@@ -271,6 +272,9 @@ describe('RoomConnection - WebRTC Features (v1.2.0)', () => {
       await expect(
         connection.handleWebRTCIceCandidate('non-existent-peer', mockCandidate)
       ).resolves.not.toThrow()
+      expect((connection as any).pendingIceCandidates.get('non-existent-peer')).toEqual([
+        mockCandidate,
+      ])
     })
   })
 

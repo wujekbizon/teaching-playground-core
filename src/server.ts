@@ -1,5 +1,27 @@
 import { createServer } from 'http'
+import { pathToFileURL } from 'url'
 import { RealTimeCommunicationSystem } from './systems/comms/RealTimeCommunicationSystem'
+import type { User } from './interfaces/user.interface'
+
+function getAllowedOrigins(): string[] {
+  const configured = process.env.ALLOWED_ORIGINS || process.env.NEXT_PUBLIC_WS_URL
+  return configured
+    ? configured.split(',').map(origin => origin.trim()).filter(Boolean)
+    : ['http://localhost:3000', 'http://localhost:5173']
+}
+
+function resolveDevelopmentIdentity(token: unknown): User | null {
+  if (typeof token !== 'string') return null
+  const [role, identity = role] = token.split(':', 2)
+  if (role !== 'teacher' && role !== 'student' && role !== 'admin') return null
+  return {
+    id: `dev-${role}-${identity}`,
+    username: identity,
+    displayName: identity,
+    role,
+    status: 'online'
+  }
+}
 
 // Environment variable validation
 function validateEnvironment() {
@@ -33,7 +55,7 @@ function validateEnvironment() {
 
   // Check ALLOWED_ORIGINS
   if (!process.env.ALLOWED_ORIGINS) {
-    warnings.push('ALLOWED_ORIGINS not set. Allowing all origins (not recommended for production).')
+    warnings.push('ALLOWED_ORIGINS not set. Using localhost development origins.')
   }
 
   // Log warnings
@@ -69,8 +91,17 @@ export async function startWebSocketServer(port: number = 3001) {
       res.end('Teaching Playground WebSocket Server')
     })
 
+    const developmentAuth = process.env.DEV_AUTH_ENABLED === 'true'
+    if (developmentAuth && process.env.NODE_ENV === 'production') {
+      throw new Error('DEV_AUTH_ENABLED cannot be used in production')
+    }
+
     const commsSystem = new RealTimeCommunicationSystem({
-      allowedOrigins: process.env.NEXT_PUBLIC_WS_URL || "http://localhost:3000"
+      allowedOrigins: getAllowedOrigins(),
+      requireAuthentication: developmentAuth,
+      identityProvider: developmentAuth
+        ? ({ auth }) => resolveDevelopmentIdentity(auth.token)
+        : undefined
     })
     
     commsSystem.initialize(server)
@@ -83,20 +114,23 @@ export async function startWebSocketServer(port: number = 3001) {
     })
 
     // Handle graceful shutdown
-    process.on('SIGTERM', () => {
-      console.log('SIGTERM received. Shutting down gracefully...')
-      server.close(() => {
-        console.log('Server closed')
-        process.exit(0)
-      })
+    const shutdown = async (signal: string) => {
+      console.log(`${signal} received. Shutting down gracefully...`)
+      await commsSystem.shutdown()
+      if (server.listening) {
+        await new Promise<void>((resolve, reject) => {
+          server.close(error => error ? reject(error) : resolve())
+        })
+      }
+      console.log('Server closed')
+    }
+
+    process.once('SIGTERM', () => {
+      void shutdown('SIGTERM').then(() => process.exit(0), () => process.exit(1))
     })
 
-    process.on('SIGINT', () => {
-      console.log('SIGINT received. Shutting down gracefully...')
-      server.close(() => {
-        console.log('Server closed')
-        process.exit(0)
-      })
+    process.once('SIGINT', () => {
+      void shutdown('SIGINT').then(() => process.exit(0), () => process.exit(1))
     })
 
     return server
@@ -107,9 +141,9 @@ export async function startWebSocketServer(port: number = 3001) {
 }
 
 // Allow running directly with node/tsx
-(async () => {
-  if (import.meta.url === new URL(import.meta.url).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void (async () => {
     const port = parseInt(process.env.PORT || '3001', 10);
     await startWebSocketServer(port);
-  }
-})();
+  })()
+}

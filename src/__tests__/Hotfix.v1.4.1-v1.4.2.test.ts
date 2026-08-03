@@ -864,98 +864,49 @@ describe('Integration: All hotfixes working together', () => {
     }, 100)
   })
 
-  it('should handle complete classroom scenario with all hotfixes', (done) => {
+  it('should handle complete classroom scenario with all hotfixes', async () => {
     const roomId = 'integration-test-room'
-    let step = 0
+    const once = <T>(socket: ClientSocket, event: string) =>
+      new Promise<T>((resolve) => socket.once(event, resolve))
 
-    const nextStep = () => {
-      step++
-      console.log(`Integration test step: ${step}`)
-    }
-
-    // Step 1: Teacher joins
+    const teacherState = once<any>(teacherSocket, 'room_state')
     teacherSocket.emit('join_room', { roomId, user: teacher })
-
-    teacherSocket.on('room_state', (state: any) => {
-      if (state.participants.length === 1 && step === 0) {
-        nextStep()
-        expect(state.participants[0].id).toBe(teacher.id)
-
-        // Step 2: Student 1 joins
-        student1Socket = ioClient('http://localhost:3010', { transports: ['websocket'] })
-        student1Socket.on('connect', () => {
-          student1Socket.emit('join_room', { roomId, user: student1 })
-        })
-
-        // Setup student1 event listeners AFTER creating the socket
-        student1Socket.on('room_state', (state: any) => {
-          if (state.participants.length === 2 && step === 1) {
-            nextStep()
-            // HOTFIX #1 TEST: Student 1 should see teacher
-            const hasTeacher = state.participants.some((p: any) => p.id === teacher.id)
-            expect(hasTeacher).toBe(true)
-
-            // Step 3: Student 2 joins
-            student2Socket = ioClient('http://localhost:3010', { transports: ['websocket'] })
-            student2Socket.on('connect', () => {
-              student2Socket.emit('join_room', { roomId, user: student2 })
-            })
-
-            // Setup student2 event listeners AFTER creating the socket
-            student2Socket.on('room_state', (state: any) => {
-              if (state.participants.length === 3 && step === 3) {
-                nextStep()
-                // HOTFIX #1 TEST: Student 2 should see ALL participants
-                expect(state.participants.length).toBe(3)
-                const participantIds = state.participants.map((p: any) => p.id)
-                expect(participantIds).toContain(teacher.id)
-                expect(participantIds).toContain(student1.id)
-                expect(participantIds).toContain(student2.id)
-
-                // Step 4: Teacher kicks student 1
-                setTimeout(() => {
-                  teacherSocket.emit('kick_participant', {
-                    roomId,
-                    targetUserId: student1.id,
-                    requesterId: teacher.id,
-                    reason: 'Integration test'
-                  })
-                }, 200)
-              }
-            })
-          }
-        })
-      }
+    await expect(teacherState).resolves.toMatchObject({
+      participants: [expect.objectContaining({ id: teacher.id })]
     })
 
-    teacherSocket.on('user_joined', (participant: any) => {
-      if (participant.id === student1.id && step === 1) {
-        nextStep()
-        console.log('Teacher received student 1 joined')
+    student1Socket = ioClient('http://localhost:3010', { transports: ['websocket'] })
+    await once(student1Socket, 'connect')
+    const teacherSawStudent1 = once<any>(teacherSocket, 'user_joined')
+    const student1State = once<any>(student1Socket, 'room_state')
+    student1Socket.emit('join_room', { roomId, user: student1 })
+    const [student1Joined, stateWithTwo] = await Promise.all([teacherSawStudent1, student1State])
+    expect(student1Joined).toMatchObject({ userId: student1.id })
+    expect(stateWithTwo.participants.map((participant: any) => participant.id)).toEqual(
+      expect.arrayContaining([teacher.id, student1.id])
+    )
 
-        // Setup student1 kicked event listeners AFTER student1Socket is created
-        if (student1Socket) {
-          student1Socket.on('kicked_from_room', (data: any) => {
-            nextStep()
-            console.log('Student 1 received kick notification')
-            expect(data.kickedBy).toBe(teacher.id)
-          })
+    student2Socket = ioClient('http://localhost:3010', { transports: ['websocket'] })
+    await once(student2Socket, 'connect')
+    const teacherSawStudent2 = once<any>(teacherSocket, 'user_joined')
+    const student2State = once<any>(student2Socket, 'room_state')
+    student2Socket.emit('join_room', { roomId, user: student2 })
+    const [student2Joined, stateWithThree] = await Promise.all([teacherSawStudent2, student2State])
+    expect(student2Joined).toMatchObject({ userId: student2.id })
+    expect(stateWithThree.participants.map((participant: any) => participant.id)).toEqual(
+      expect.arrayContaining([teacher.id, student1.id, student2.id])
+    )
 
-          student1Socket.on('disconnect', () => {
-            nextStep()
-            console.log('Student 1 disconnected after kick')
-
-            // All hotfixes tested!
-            setTimeout(() => {
-              expect(step).toBeGreaterThanOrEqual(5)
-              done()
-            }, 500)
-          })
-        }
-      } else if (participant.id === student2.id && step === 2) {
-        nextStep()
-        console.log('Teacher received student 2 joined')
-      }
+    const kicked = once<any>(student1Socket, 'kicked_from_room')
+    const disconnected = once(student1Socket, 'disconnect')
+    teacherSocket.emit('kick_participant', {
+      roomId,
+      targetUserId: student1.id,
+      requesterId: teacher.id,
+      reason: 'Integration test'
     })
-  }, 15000)
+
+    await expect(kicked).resolves.toMatchObject({ kickedBy: teacher.id })
+    await disconnected
+  }, 10000)
 })

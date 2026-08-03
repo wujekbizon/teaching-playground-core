@@ -1,18 +1,18 @@
 # Teaching Playground Core — Full Repository Map
 
-> Purpose of this document: a complete, self-contained map of `teaching-playground-core` (v1.4.6) — what it is, how it's built, and how every piece fits together — written to support integrating this service into **wolfmed-edu**. This repo is *already* the backend that wolfmed uses/tested against (see CHANGELOG v1.4.6: "Validated with production logs from wolfmed application").
+> Purpose of this document: a complete, self-contained map of `teaching-playground-core` (v2.1.1) — what it is, how it's built, and how every piece fits together — written to support integrating this service into **wolfmed-edu**. This repo is *already* the backend that wolfmed uses/tested against (see CHANGELOG v1.4.6: "Validated with production logs from wolfmed application").
 
 ---
 
 ## 1. What This Repo Is
 
-**`@teaching-playground/core`** is a standalone, publishable npm package (currently privately licensed, not on public npm) that implements the **entire backend + client SDK for a real-time virtual classroom**: WebSocket signaling server, WebRTC video/audio, text chat, lecture/room lifecycle management, participant controls, and client-side recording.
+**`@teaching-playground/core`** is a standalone, published npm package that implements the **entire backend + client SDK for a real-time virtual classroom**: WebSocket signaling server, WebRTC video/audio, text chat, lecture/room lifecycle management, participant controls, and client-side recording.
 
 It is designed to be **installed as a dependency** into a host application (like wolfmed-edu) rather than run standalone — though it *can* run standalone via `src/server.ts`.
 
 - **Package name:** `@teaching-playground/core`
-- **Version:** 1.4.6
-- **License:** Privately licensed, all rights reserved (author: WESA)
+- **Version:** 2.1.1
+- **License:** MIT (author: WESA)
 - **Repo:** `github.com/wujekbizon/teaching-playground-core`
 - **Module type:** ESM (`"type": "module"`), compiled TypeScript → `dist/`
 - **Entry points:** `main: dist/index.js`, `types: dist/index.d.ts`
@@ -29,7 +29,7 @@ Education, medical training (OSCEs, clinical case discussions, grand rounds), co
 | Language | TypeScript 5.8 (strict mode), compiled to ES2020/ESNext modules |
 | Realtime transport | **Socket.IO** 4.8 (server: `socket.io`, client: `socket.io-client`) |
 | Video/audio | **WebRTC** (native browser `RTCPeerConnection` API) — signaling relayed over Socket.IO; STUN-only (Google STUN servers), no bundled TURN |
-| P2P helper lib (declared, mostly unused directly) | `simple-peer` (dependency present, but hand-rolled `RTCPeerConnection` logic in `RoomConnection`/`WebRTCService` is what's actually used) |
+| P2P implementation | Native `RTCPeerConnection` logic in `RoomConnection`; no third-party P2P helper dependency |
 | Validation | **Zod** 3.24 (`CreateLectureSchema`, `UpdateLectureSchema`) |
 | Persistence (dev/default) | Custom **JsonDatabase** — flat-file JSON store (`data/test-data.json`) with singleton pattern + `async-mutex` for atomic read/modify/write; falls back to REST (`/api/rooms`) + `localStorage` when running in a browser context |
 | Concurrency control | `async-mutex` (`Mutex`) around DB reads/writes |
@@ -91,6 +91,8 @@ teaching-playground-core/
 ├── scripts/
 │   ├── test-package.sh                 # build → pack → install into temp dir → smoke test
 │   └── test-in-project.sh              # integration test against a scratch consumer project
+├── examples/
+│   └── classroom-harness/              # React/Vite browser harness for real media + event testing
 ├── .env.example                        # PORT, NEXT_PUBLIC_WS_URL, ALLOWED_ORIGINS, rate-limit/cleanup knobs
 ├── package.json / pnpm-lock.yaml / tsconfig.json / jest.config.js
 └── Docs (see §8 below): README.md, CHANGELOG.md, IMPLEMENTATION-PLAN.md,
@@ -204,14 +206,20 @@ This is what a **frontend** (wolfmed-edu's React/Next.js app) instantiates direc
 
 - Wraps `socket.io-client` with auto-reconnect (5 attempts, linear backoff off `reconnectDelay * attemptNumber`).
 - Mirrors every server event into its own `EventEmitter` API (`connection.on('user_joined', ...)`, etc.) — see the full event list in README §"Events" (reproduced in code above).
-- Owns a `WebRTCService` instance for **legacy-path** offer/answer relay (`socket.emit('offer'/'answer'/'ice_candidate', ...)` — the *older* v1.1.x signaling contract), **and** its own hand-rolled `RTCPeerConnection` management methods (`setupPeerConnection`, `createOffer`, `handleWebRTCOffer/Answer/IceCandidate`) that talk the *newer* v1.2.0 `webrtc:offer/answer/ice-candidate` contract directly, bypassing `WebRTCService`. **Both code paths exist simultaneously in this file** — worth reading closely before choosing which one wolfmed-edu's frontend should drive, or reconciling per WEBSOCKET-FLOW.md before integrating (see §7).
+- Owns the browser `RTCPeerConnection` lifecycle and uses the current
+  `webrtc:offer`, `webrtc:answer`, and `webrtc:ice-candidate` signaling contract.
+  Room membership is established before the SDK reports `connected`, and early
+  ICE candidates are queued until the remote description is available.
 - Screen sharing: `startScreenShare()`/`stopScreenShare()` use `getDisplayMedia` and swap the outgoing video track via `RTCRtpSender.replaceTrack` across all peer connections; auto-stops on browser-native "Stop sharing."
 - Client-side recording (v1.4.0): `startRecording(stream, options)` wraps `MediaRecorder` (auto-picks best supported mimeType from a preference list, default 2.5 Mbps), buffers chunks, and on `stop()` emits a `Blob` via `recording_stopped` for the app to download/upload — **the package does not upload recordings anywhere itself**, that's left to the host app.
 - Participant-control convenience methods (`muteAllParticipants`, `muteParticipant`, `kickParticipant`, `raiseHand`, `lowerHand`) do **client-side role checks** (`this.user.role !== 'teacher' && !== 'admin'` → throws `SystemError('PERMISSION_DENIED', ...)`) before emitting — but note the **server also re-checks** these permissions authoritatively, so this is UX-only, not a security boundary.
 
 ### 4.7 `WebRTCService` (`src/services/WebRTCService.ts`)
 
-Lower-level, transceiver-based peer connection manager (STUN-only, 3 Google STUN servers hardcoded). Used by `RoomConnection`'s legacy signaling path. Exposes `setLocalStream`, `addStream`, `createOffer`, `handleOffer/Answer/IceCandidate`, `closeConnection`, `closeAllConnections`. Not used by the newer v1.2.0 direct-`RTCPeerConnection` methods on `RoomConnection` itself.
+Lower-level, transceiver-based peer connection manager retained for internal
+compatibility and focused testing. The public `RoomConnection` SDK no longer
+uses its legacy signaling events; new integrations should use `RoomConnection`
+and provide ICE/TURN settings with `RoomConnectionOptions.rtcConfiguration`.
 
 ### 4.8 `JsonDatabase` (`src/utils/JsonDatabase.ts`)
 
@@ -291,8 +299,12 @@ StreamState { isActive, streamerId, quality: 'low'|'medium'|'high' }
 4. **Ephemeral state is single-process/in-memory.** If wolfmed-edu deploys the WS server across multiple instances/pods, participants/chat/stream state won't be shared between instances unless a Socket.IO adapter (e.g. Redis adapter) is added — not present today. Horizontal scaling is a gap to solve before that becomes a requirement.
 5. **`EventManagementSystem.updateEventStatus()` is the linchpin call** for lecture start/end — it's what keeps DB status, room status, and the WebSocket room-availability gate in sync. Any custom lecture-scheduling UI in wolfmed-edu should call through this, not mutate `Lecture.status` directly via `updateEvent`.
 6. **Never call the deprecated `RoomManagementSystem` participant methods** (`addParticipant`, `removeParticipant`, `updateParticipantStreamingStatus`, `clearParticipants`) — they throw by design. Participants only flow through WebSocket `join_room`/`leave_room`.
-7. **Two WebRTC signaling contracts coexist in `RoomConnection`** (legacy `offer`/`answer`/`ice_candidate` via `WebRTCService`, and newer `webrtc:offer/answer/ice-candidate` via inline `RTCPeerConnection` methods). Confirm with `WEBSOCKET-FLOW.md` which one is production-blessed (it documents the `webrtc:*` v1.2.0 contract as current) before building wolfmed's video UI against it, and prefer the newer contract.
-8. **No TURN server is configured** — only STUN. Peer connections between clients behind symmetric NATs will fail. This is called out as a deployment TODO in README (`TURN_SERVER_URL` env vars are documented but unused in code — they're not read anywhere in `WebRTCService`/`RoomConnection`, only mentioned in the README's example `.env`). wolfmed-edu will need to add real TURN config wiring if it's needed for target users.
+7. **The SDK uses one current WebRTC signaling contract** (`webrtc:offer`,
+   `webrtc:answer`, and `webrtc:ice-candidate`). Avoid the historical unprefixed
+   event names when integrating a frontend.
+8. **Production deployments still need host-provided TURN credentials.** Pass a
+   complete `RTCConfiguration` through `RoomConnectionOptions.rtcConfiguration`;
+   the package must not embed shared production TURN secrets.
 9. **`DataManagementSystem` and several `TeachingPlayground` lifecycle methods (`saveState`, `loadState`, `restartSystem`, `shutdown`, `initialize`) are no-op stubs.** Don't assume calling them does anything beyond logging.
 10. **`ErrorCode` type is non-exhaustive** — match on `error.code` (string) defensively in wolfmed-edu's error handling rather than relying on the exported union type.
 11. Frontend requirements explicitly called out in CHANGELOG v1.4.6 that wolfmed-edu's app layer must implement: handle `join_room_error` (redirect/show message), implement the mute event handlers, and fix kicked-user video cleanup client-side.
