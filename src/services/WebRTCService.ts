@@ -3,7 +3,8 @@ import { EventEmitter } from 'events'
 export class WebRTCService extends EventEmitter {
   private peerConnections: Map<string, RTCPeerConnection> = new Map()
   private localStream: MediaStream | null = null
-  private configuration: RTCConfiguration = {
+  private configuration: RTCConfiguration
+  private static readonly defaultConfiguration: RTCConfiguration = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
@@ -12,20 +13,25 @@ export class WebRTCService extends EventEmitter {
   }
   private transceivers: Map<string, RTCRtpTransceiver[]> = new Map()
 
+  constructor(configuration?: RTCConfiguration) {
+    super()
+    this.configuration = configuration ?? WebRTCService.defaultConfiguration
+  }
+
   async setLocalStream(stream: MediaStream) {
     try {
       if (this.localStream) {
         // Stop old tracks
         this.localStream.getTracks().forEach(track => track.stop())
       }
-      
+
       this.localStream = stream
       console.log('Local stream set:', stream.id)
-      
+
       // Add tracks to all existing peer connections
       for (const [peerId, pc] of this.peerConnections.entries()) {
         console.log('Adding tracks to existing peer:', peerId)
-        
+
         // Remove existing transceivers
         const existingTransceivers = this.transceivers.get(peerId) || []
         existingTransceivers.forEach(transceiver => {
@@ -33,7 +39,7 @@ export class WebRTCService extends EventEmitter {
             pc.removeTrack(transceiver.sender)
           }
         })
-        
+
         // Add new transceivers
         const newTransceivers: RTCRtpTransceiver[] = []
         stream.getTracks().forEach(track => {
@@ -54,7 +60,7 @@ export class WebRTCService extends EventEmitter {
   async addStream(peerId: string, stream: MediaStream): Promise<void> {
     console.log(`Adding stream to peer: ${peerId}`);
     await this.setLocalStream(stream);
-    
+
     let pc = this.peerConnections.get(peerId);
     if (!pc) {
       pc = await this.createPeerConnection(peerId);
@@ -194,4 +200,4 @@ export class WebRTCService extends EventEmitter {
       this.localStream = null
     }
   }
-} 
+}

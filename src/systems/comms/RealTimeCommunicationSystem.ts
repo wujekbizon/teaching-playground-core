@@ -1,5 +1,5 @@
 import { CommsConfig, SystemError } from '../../interfaces'
-import { Server as SocketIOServer } from 'socket.io'
+import { Server as SocketIOServer, Socket } from 'socket.io'
 import { Server as HttpServer } from 'http'
 import { EventEmitter } from 'events'
 import { User } from '../../interfaces/user.interface'
@@ -74,6 +74,13 @@ export class RealTimeCommunicationSystem extends EventEmitter {
   }
 
   initialize(server: HttpServer) {
+    if (this.config?.requireAuthentication && !this.config.identityProvider) {
+      throw new SystemError(
+        'AUTH_CONFIGURATION_INVALID',
+        'An identityProvider is required when requireAuthentication is enabled'
+      )
+    }
+
     this.io = new SocketIOServer(server, {
       cors: {
         origin: this.config?.allowedOrigins || "*",
@@ -82,6 +89,29 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       pingTimeout: 10000,
       pingInterval: 5000
     })
+
+    if (this.config?.socketAdapter) {
+      this.io.adapter(this.config.socketAdapter as Parameters<SocketIOServer['adapter']>[0])
+    }
+
+    if (this.config?.identityProvider) {
+      this.io.use(async (socket, next) => {
+        try {
+          const user = await this.config!.identityProvider!({
+            auth: socket.handshake.auth as Record<string, unknown>,
+            headers: socket.handshake.headers
+          })
+          if (!user) {
+            next(new Error('UNAUTHORIZED'))
+            return
+          }
+          socket.data.user = user
+          next()
+        } catch {
+          next(new Error('UNAUTHORIZED'))
+        }
+      })
+    }
 
     this.setupEventHandlers()
     this.startAutomaticCleanup()
@@ -93,6 +123,8 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     this.cleanupInterval = setInterval(() => {
       this.cleanupInactiveRooms()
     }, this.CLEANUP_INTERVAL)
+    // The maintenance timer must not keep CLI consumers or test processes alive.
+    this.cleanupInterval.unref()
 
     console.log('Automatic room cleanup started')
   }
@@ -134,8 +166,17 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       console.log(`Client connected: ${socket.id}`)
 
       // Room events
-      socket.on('join_room', (data: { roomId: string; user: User }) => {
-        this.handleJoinRoom(socket, data.roomId, data.user)
+      socket.on('join_room', (data: { roomId: string; user?: User }) => {
+        const user = socket.data.user as User | undefined ?? data.user
+        if (!user || (this.config?.requireAuthentication && !socket.data.user)) {
+          socket.emit('join_room_error', {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication is required',
+            roomId: data.roomId
+          })
+          return
+        }
+        this.handleJoinRoom(socket, data.roomId, user)
       })
 
       socket.on('leave_room', (roomId: string) => {
@@ -177,7 +218,8 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       // v1.3.1: Participant control events
       socket.on('mute_all_participants', (data: { roomId: string; requesterId: string }) => {
         try {
-          this.muteAllParticipants(data.roomId, data.requesterId)
+          const requester = this.requireSocketParticipant(socket, data.roomId)
+          this.muteAllParticipants(data.roomId, requester.id)
         } catch (error) {
           socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to mute all participants' })
         }
@@ -185,7 +227,8 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
       socket.on('mute_participant', (data: { roomId: string; targetUserId: string; requesterId: string }) => {
         try {
-          this.muteParticipant(data.roomId, data.targetUserId, data.requesterId)
+          const requester = this.requireSocketParticipant(socket, data.roomId)
+          this.muteParticipant(data.roomId, data.targetUserId, requester.id)
         } catch (error) {
           socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to mute participant' })
         }
@@ -195,7 +238,8 @@ export class RealTimeCommunicationSystem extends EventEmitter {
         try {
           // v1.4.1: Enhanced logging for debugging
           console.log(`Kick participant event received - Room: ${data.roomId}, Target: ${data.targetUserId}, Requester: ${data.requesterId}, Reason: ${data.reason || 'none'}`)
-          this.kickParticipant(data.roomId, data.targetUserId, data.requesterId, data.reason)
+          const requester = this.requireSocketParticipant(socket, data.roomId)
+          this.kickParticipant(data.roomId, data.targetUserId, requester.id, data.reason)
         } catch (error) {
           console.error('Error kicking participant:', error)
           socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to kick participant' })
@@ -204,7 +248,8 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
       socket.on('raise_hand', (data: { roomId: string; userId: string }) => {
         try {
-          this.raiseHand(data.roomId, data.userId)
+          const participant = this.requireSocketParticipant(socket, data.roomId)
+          this.raiseHand(data.roomId, participant.id)
         } catch (error) {
           socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to raise hand' })
         }
@@ -212,7 +257,8 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
       socket.on('lower_hand', (data: { roomId: string; userId: string }) => {
         try {
-          this.lowerHand(data.roomId, data.userId)
+          const participant = this.requireSocketParticipant(socket, data.roomId)
+          this.lowerHand(data.roomId, participant.id)
         } catch (error) {
           socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to lower hand' })
         }
@@ -221,14 +267,16 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       // v1.4.0: Recording notification events
       socket.on('recording_started', (data: { roomId: string; teacherId: string }) => {
         try {
+          const teacher = this.requireSocketParticipant(socket, data.roomId)
+          this.requireInstructor(teacher)
           // Notify all participants in the room
           if (this.io) {
             this.io.to(data.roomId).emit('lecture_recording_started', {
-              teacherId: data.teacherId,
+              teacherId: teacher.id,
               timestamp: new Date().toISOString()
             })
           }
-          console.log(`Recording started in room ${data.roomId} by teacher ${data.teacherId}`)
+          console.log(`Recording started in room ${data.roomId} by teacher ${teacher.id}`)
         } catch (error) {
           socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to notify recording start' })
         }
@@ -236,15 +284,17 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
       socket.on('recording_stopped', (data: { roomId: string; teacherId: string; duration: number }) => {
         try {
+          const teacher = this.requireSocketParticipant(socket, data.roomId)
+          this.requireInstructor(teacher)
           // Notify all participants in the room
           if (this.io) {
             this.io.to(data.roomId).emit('lecture_recording_stopped', {
-              teacherId: data.teacherId,
+              teacherId: teacher.id,
               duration: data.duration,
               timestamp: new Date().toISOString()
             })
           }
-          console.log(`Recording stopped in room ${data.roomId} by teacher ${data.teacherId} (duration: ${data.duration}s)`)
+          console.log(`Recording stopped in room ${data.roomId} by teacher ${teacher.id} (duration: ${data.duration}s)`)
         } catch (error) {
           socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to notify recording stop' })
         }
@@ -254,6 +304,20 @@ export class RealTimeCommunicationSystem extends EventEmitter {
         this.handleDisconnect(socket)
       })
     })
+  }
+
+  private requireSocketParticipant(socket: Socket, roomId: string): RoomParticipant {
+    const participant = this.rooms.get(roomId)?.get(socket.id)
+    if (!participant) {
+      throw new SystemError('PERMISSION_DENIED', 'The requesting socket is not a member of this room')
+    }
+    return participant
+  }
+
+  private requireInstructor(participant: RoomParticipant): void {
+    if (participant.role !== 'teacher' && participant.role !== 'admin') {
+      throw new SystemError('PERMISSION_DENIED', 'Only teachers/admins can perform this action')
+    }
   }
 
   private handleJoinRoom(socket: any, roomId: string, user: User) {
@@ -347,6 +411,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
   private handleRequestMessageHistory(socket: any, roomId: string) {
     try {
+      this.requireSocketParticipant(socket, roomId)
       // Send message history separately, only when requested
       const messages = this.messages.get(roomId) || []
       socket.emit('message_history', { messages })
@@ -396,8 +461,9 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
   private handleMessage(socket: any, roomId: string, message: Omit<RoomMessage, 'timestamp' | 'messageId' | 'sequence'>) {
     try {
+      const participant = this.requireSocketParticipant(socket, roomId)
       // Rate limiting
-      if (!this.checkRateLimit(message.userId)) {
+      if (!this.checkRateLimit(participant.id)) {
         socket.emit('error', {
           message: 'Rate limit exceeded. Please slow down.'
         })
@@ -412,7 +478,9 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       this.messageSequence.set(roomId, sequence)
 
       const fullMessage: RoomMessage = {
-        ...message,
+        content: message.content,
+        userId: participant.id,
+        username: participant.username,
         messageId: `${roomId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         sequence,
         timestamp: new Date().toISOString()
@@ -435,7 +503,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       const preview = message.content.length > 50
         ? `${message.content.substring(0, 50)}...`
         : message.content
-      console.log(`Chat message from ${message.username} in room ${roomId}: ${preview}`)
+      console.log(`Chat message from ${participant.username} in room ${roomId}: ${preview}`)
 
       // Broadcast to room (not in room_state!)
       this.io!.to(roomId).emit('new_message', fullMessage)
@@ -447,22 +515,23 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
   private handleStartStream(socket: any, roomId: string, username: string, quality: StreamState['quality']) {
     try {
+      const participant = this.requireSocketParticipant(socket, roomId)
+      if (!participant.canStream) {
+        throw new SystemError('PERMISSION_DENIED', 'This participant cannot start a stream')
+      }
       const streamState: StreamState = {
         isActive: true,
-        streamerId: username,  // Use username for display (not UUID)
+        streamerId: participant.username,
         quality
       }
       this.streams.set(roomId, streamState)
 
       // Update participant streaming status
-      const participant = this.rooms.get(roomId)?.get(socket.id)
-      if (participant) {
-        participant.isStreaming = true
-      }
+      participant.isStreaming = true
 
       this.updateRoomActivity(roomId)
       this.io!.to(roomId).emit('stream_started', streamState)
-      console.log(`Stream started in room ${roomId} by ${username}`)
+      console.log(`Stream started in room ${roomId} by ${participant.username}`)
     } catch (error) {
       console.error('Error in handleStartStream:', error)
       socket.emit('error', { message: 'Failed to start stream' })
@@ -471,13 +540,15 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
   private handleStopStream(socket: any, roomId: string) {
     try {
+      const participant = this.requireSocketParticipant(socket, roomId)
+      const stream = this.streams.get(roomId)
+      if (stream && stream.streamerId !== participant.username && participant.role !== 'admin') {
+        throw new SystemError('PERMISSION_DENIED', 'Only the active streamer or an admin can stop this stream')
+      }
       this.streams.delete(roomId)
 
       // Update participant streaming status
-      const participant = this.rooms.get(roomId)?.get(socket.id)
-      if (participant) {
-        participant.isStreaming = false
-      }
+      participant.isStreaming = false
 
       this.updateRoomActivity(roomId)
       this.io!.to(roomId).emit('stream_stopped')
@@ -491,6 +562,10 @@ export class RealTimeCommunicationSystem extends EventEmitter {
   // WebRTC Signaling Handlers (v1.2.0: Updated to match API contract)
   private handleWebRTCOffer(socket: any, data: { roomId: string; targetPeerId: string; offer: RTCSessionDescriptionInit }) {
     try {
+      this.requireSocketParticipant(socket, data.roomId)
+      if (!this.rooms.get(data.roomId)?.has(data.targetPeerId)) {
+        throw new SystemError('PERMISSION_DENIED', 'The target peer is not in this room')
+      }
       socket.to(data.targetPeerId).emit('webrtc:offer', {
         fromPeerId: socket.id,  // v1.2.0: Changed from 'from' to 'fromPeerId'
         offer: data.offer
@@ -503,6 +578,9 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
   private handleWebRTCAnswer(socket: any, data: { targetPeerId: string; answer: RTCSessionDescriptionInit }) {
     try {
+      if (!this.arePeersInSameRoom(socket.id, data.targetPeerId)) {
+        throw new SystemError('PERMISSION_DENIED', 'Peers must share a room')
+      }
       socket.to(data.targetPeerId).emit('webrtc:answer', {
         fromPeerId: socket.id,  // v1.2.0: Changed from 'from' to 'fromPeerId'
         answer: data.answer
@@ -515,6 +593,9 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
   private handleWebRTCIceCandidate(socket: any, data: { targetPeerId: string; candidate: RTCIceCandidateInit }) {
     try {
+      if (!this.arePeersInSameRoom(socket.id, data.targetPeerId)) {
+        throw new SystemError('PERMISSION_DENIED', 'Peers must share a room')
+      }
       socket.to(data.targetPeerId).emit('webrtc:ice-candidate', {
         fromPeerId: socket.id,  // v1.2.0: Changed from 'from' to 'fromPeerId'
         candidate: data.candidate
@@ -522,6 +603,12 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     } catch (error) {
       console.error('Error in handleWebRTCIceCandidate:', error)
     }
+  }
+
+  private arePeersInSameRoom(firstSocketId: string, secondSocketId: string): boolean {
+    return Array.from(this.rooms.values()).some(
+      participants => participants.has(firstSocketId) && participants.has(secondSocketId)
+    )
   }
 
   private handleDisconnect(socket: any) {
@@ -966,11 +1053,17 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       this.roomLastActivity.clear()
       this.messageLimiter.clear()
       this.messageSequence.clear()
+      this.roomLectureMap.clear()
+      this.lectureLookup.clear()
 
       console.log('RealTimeCommunicationSystem shutdown complete')
     } catch (error) {
       console.error('Error during shutdown:', error)
       throw new SystemError('SHUTDOWN_FAILED', 'Failed to shutdown communication system')
     }
+  }
+
+  isInitialized(): boolean {
+    return this.io !== null
   }
 }

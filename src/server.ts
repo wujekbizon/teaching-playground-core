@@ -1,4 +1,5 @@
 import { createServer } from 'http'
+import { pathToFileURL } from 'url'
 import { RealTimeCommunicationSystem } from './systems/comms/RealTimeCommunicationSystem'
 
 // Environment variable validation
@@ -83,20 +84,23 @@ export async function startWebSocketServer(port: number = 3001) {
     })
 
     // Handle graceful shutdown
-    process.on('SIGTERM', () => {
-      console.log('SIGTERM received. Shutting down gracefully...')
-      server.close(() => {
-        console.log('Server closed')
-        process.exit(0)
-      })
+    const shutdown = async (signal: string) => {
+      console.log(`${signal} received. Shutting down gracefully...`)
+      await commsSystem.shutdown()
+      if (server.listening) {
+        await new Promise<void>((resolve, reject) => {
+          server.close(error => error ? reject(error) : resolve())
+        })
+      }
+      console.log('Server closed')
+    }
+
+    process.once('SIGTERM', () => {
+      void shutdown('SIGTERM').then(() => process.exit(0), () => process.exit(1))
     })
 
-    process.on('SIGINT', () => {
-      console.log('SIGINT received. Shutting down gracefully...')
-      server.close(() => {
-        console.log('Server closed')
-        process.exit(0)
-      })
+    process.once('SIGINT', () => {
+      void shutdown('SIGINT').then(() => process.exit(0), () => process.exit(1))
     })
 
     return server
@@ -107,9 +111,9 @@ export async function startWebSocketServer(port: number = 3001) {
 }
 
 // Allow running directly with node/tsx
-(async () => {
-  if (import.meta.url === new URL(import.meta.url).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void (async () => {
     const port = parseInt(process.env.PORT || '3001', 10);
     await startWebSocketServer(port);
-  }
-})();
+  })()
+}

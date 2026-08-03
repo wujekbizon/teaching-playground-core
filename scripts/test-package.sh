@@ -51,7 +51,7 @@ echo ""
 # Step 4: Run tests
 echo -e "${BLUE}[4/8]${NC} ${YELLOW}Running tests...${NC}"
 if command -v pnpm &> /dev/null; then
-    pnpm test
+    pnpm exec jest --runInBand
 else
     npm test
 fi

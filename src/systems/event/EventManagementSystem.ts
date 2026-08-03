@@ -1,16 +1,17 @@
 import { SystemError, ErrorCode } from '../../interfaces/errors.interface'
-import { EventConfig, Lecture, EventOptions } from '../../interfaces'
+import { EventConfig, Lecture, EventOptions, PersistenceAdapter } from '../../interfaces'
 import { CreateLectureSchema, UpdateLectureSchema } from '../../interfaces/schema'
 import { JsonDatabase } from '../../utils/JsonDatabase'
 import { RealTimeCommunicationSystem } from '../comms/RealTimeCommunicationSystem'
+import { randomUUID } from 'crypto'
 
 export class EventManagementSystem {
-  private db: JsonDatabase
+  private db: PersistenceAdapter
   private commsSystem: RealTimeCommunicationSystem | null = null
 
-  constructor(private config?: EventConfig) {
+  constructor(private config?: EventConfig, persistence?: PersistenceAdapter) {
     // Use singleton instance of JsonDatabase
-    this.db = JsonDatabase.getInstance()
+    this.db = persistence ?? JsonDatabase.getInstance()
   }
 
   /**
@@ -34,7 +35,7 @@ export class EventManagementSystem {
 
       // Create the lecture event
       const event: Lecture = {
-        id: `lecture_${Date.now()}`,
+        id: `lecture_${randomUUID()}`,
         name: validationResult.data.name,
         date: validationResult.data.date,
         roomId: validationResult.data.roomId,

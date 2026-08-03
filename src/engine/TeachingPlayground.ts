@@ -14,11 +14,12 @@ export default class TeachingPlayground {
   private eventSystem: EventManagementSystem
   private dataSystem: DataManagementSystem
   private currentUser: User | null = null
+  private initialized = false
 
   constructor(config: TeachingPlaygroundConfig) {
-    this.roomSystem = new RoomManagementSystem(config.roomConfig)
     this.commsSystem = new RealTimeCommunicationSystem(config.commsConfig)
-    this.eventSystem = new EventManagementSystem(config.eventConfig)
+    this.roomSystem = new RoomManagementSystem(config.roomConfig, this.commsSystem, config.persistence)
+    this.eventSystem = new EventManagementSystem(config.eventConfig, config.persistence)
     this.dataSystem = new DataManagementSystem(config.dataConfig)
 
     // Inject commsSystem into eventSystem for room cleanup (v1.1.3 feature)
@@ -50,7 +51,7 @@ export default class TeachingPlayground {
       return room
     }
 
-  private async ensureUserAuthorized(user: User | null, action: string) {
+  private ensureUserAuthorized(user: User | null, action: string): asserts user is User {
     if (!user) {
       throw new SystemError('UNAUTHORIZED', 'No user provided')
     }
@@ -72,7 +73,7 @@ export default class TeachingPlayground {
     maxParticipants?: number
   }): Promise<Lecture> {
     try {
-      this.ensureUserAuthorized(this.currentUser!, 'schedule a lecture')
+      this.ensureUserAuthorized(this.currentUser, 'schedule a lecture')
 
       // Create the event with teacher information
       const event = await this.eventSystem.createEvent({
@@ -103,7 +104,7 @@ export default class TeachingPlayground {
     toDate?: string
   }): Promise<Lecture[]> {
     try {
-      this.ensureUserAuthorized(this.currentUser!, 'fetch teacher lectures')
+      this.ensureUserAuthorized(this.currentUser, 'fetch teacher lectures')
 
       return await this.eventSystem.listEvents({
         type: 'lecture',
@@ -125,7 +126,7 @@ export default class TeachingPlayground {
     }
   ): Promise<Lecture> {
     try {
-      this.ensureUserAuthorized(this.currentUser!, 'update a lecture')
+      this.ensureUserAuthorized(this.currentUser, 'update a lecture')
 
       // Verify lecture ownership
       const lecture = await this.eventSystem.getEvent(lectureId)
@@ -141,7 +142,7 @@ export default class TeachingPlayground {
 
   async cancelLecture(lectureId: string, reason?: string): Promise<void> {
     try {
-      this.ensureUserAuthorized(this.currentUser!, 'cancel a lecture')
+      this.ensureUserAuthorized(this.currentUser, 'cancel a lecture')
 
       // Verify lecture ownership
       const lecture = await this.eventSystem.getEvent(lectureId)
@@ -202,42 +203,47 @@ export default class TeachingPlayground {
 
   // Communication
   setupCommunication(roomId: string): void {
-    console.log(`Setting up communication for room: ${roomId}`)
+    this.commsSystem.setupForRoom(roomId)
   }
 
-  disconnectCommunication(roomId: string): void {
-    console.log(`Disconnecting communication for room: ${roomId}`)
+  async disconnectCommunication(roomId: string): Promise<void> {
+    await this.commsSystem.deallocateResources(roomId)
   }
 
   // Data Handling
   async saveState(): Promise<void> {
-    console.log('Saving state')
+    throw new SystemError('METHOD_NOT_IMPLEMENTED', 'saveState is not implemented; persistence adapters save mutations directly')
   }
 
   async loadState(): Promise<void> {
-    console.log('Loading state')
+    throw new SystemError('METHOD_NOT_IMPLEMENTED', 'loadState is not implemented; persistence adapters load data on demand')
   }
 
   // System Health
   getSystemStatus(): { [key: string]: string } {
     return {
       roomSystem: 'healthy',
-      commsSystem: 'healthy',
+      commsSystem: this.commsSystem.isInitialized() ? 'healthy' : 'not-initialized',
       eventSystem: 'healthy',
-      dataSystem: 'healthy',
+      dataSystem: 'not-implemented',
     }
   }
 
   restartSystem(system: 'room' | 'comms' | 'event' | 'data'): void {
-    console.log(`Restarting system: ${system}`)
+    throw new SystemError('METHOD_NOT_IMPLEMENTED', `Restarting ${system} independently is not supported`)
   }
 
   // Lifecycle
-  shutdown(): void {
-    console.log('Shutting down all systems')
+  async shutdown(): Promise<void> {
+    await this.commsSystem.shutdown()
+    this.initialized = false
   }
 
-  initialize(config: TeachingPlaygroundConfig): void {
-    console.log('Reinitializing with new config')
+  initialize(server: import('http').Server): void {
+    if (this.initialized) {
+      throw new SystemError('ALREADY_INITIALIZED', 'Teaching Playground is already initialized')
+    }
+    this.commsSystem.initialize(server)
+    this.initialized = true
   }
 }
