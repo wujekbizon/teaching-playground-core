@@ -31,6 +31,7 @@ echo ""
 
 # Create test project
 TEST_DIR="$HOME/test-teaching-playground-$(date +%s)"
+trap 'rm -rf "$TEST_DIR"' EXIT
 echo -e "${BLUE}[1/6]${NC} ${YELLOW}Creating test project at ${TEST_DIR}${NC}"
 mkdir -p "$TEST_DIR"
 cd "$TEST_DIR"
@@ -41,11 +42,19 @@ npm init -y > /dev/null 2>&1
 
 # Install required dependencies
 echo -e "${BLUE}[3/6]${NC} ${YELLOW}Installing TypeScript and dependencies...${NC}"
-npm install --save-dev typescript @types/node > /dev/null 2>&1
+if command -v pnpm &> /dev/null; then
+    pnpm add --save-dev typescript @types/node
+else
+    npm install --save-dev typescript @types/node
+fi
 
 # Install the package
 echo -e "${BLUE}[4/6]${NC} ${YELLOW}Installing @teaching-playground/core from tarball...${NC}"
-npm install "$PACKAGE_DIR/$TARBALL"
+if command -v pnpm &> /dev/null; then
+    pnpm add "$PACKAGE_DIR/$TARBALL"
+else
+    npm install "$PACKAGE_DIR/$TARBALL"
+fi
 echo -e "${GREEN}✓ Package installed${NC}"
 echo ""
 
@@ -57,8 +66,8 @@ cat > tsconfig.json << 'EOF'
 {
   "compilerOptions": {
     "target": "es2020",
-    "module": "esnext",
-    "moduleResolution": "node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "esModuleInterop": true,
     "strict": true,
     "outDir": "./dist"
@@ -91,29 +100,33 @@ EOF
 
 # Create basic functionality test
 cat > test-functionality.ts << 'EOF'
+import { createServer } from 'node:http';
 import { TeachingPlayground } from '@teaching-playground/core';
 
 async function test() {
   console.log('Testing TeachingPlayground...');
 
-  const playground = new TeachingPlayground(9999);
+  const playground = new TeachingPlayground({});
   console.log('✓ TeachingPlayground instance created');
 
-  await playground.initialize();
+  const server = createServer();
+  playground.initialize(server);
+  await new Promise<void>(resolve => server.listen(0, resolve));
   console.log('✓ Playground initialized');
 
-  const room = await playground.createRoom({
+  const room = await playground.createClassroom({
     name: 'Test Room',
-    description: 'Testing package functionality',
     capacity: 50,
-    teacherId: 'test-teacher-id'
   });
   console.log('✓ Room created:', room.id);
 
-  const rooms = playground.getRooms();
+  const rooms = await playground.roomSystem.listRooms();
   console.log('✓ Retrieved rooms:', rooms.length);
 
-  playground.shutdown();
+  await playground.shutdown();
+  await new Promise<void>((resolve, reject) =>
+    server.close(error => error ? reject(error) : resolve())
+  );
   console.log('✓ Playground shutdown');
 
   console.log('');
@@ -135,13 +148,12 @@ echo -e "${BLUE}[6/6]${NC} ${YELLOW}Running tests...${NC}"
 echo ""
 
 echo -e "${YELLOW}═══ Test 1: TypeScript Import Test ═══${NC}"
-npx tsc test-imports.ts
-node test-imports.js
+npx tsc
+node dist/test-imports.js
 echo ""
 
 echo -e "${YELLOW}═══ Test 2: Functionality Test ═══${NC}"
-npx tsc test-functionality.ts
-timeout 5s node test-functionality.js || true
+timeout 10s node dist/test-functionality.js
 echo ""
 
 # Summary
@@ -150,14 +162,5 @@ echo -e "${GREEN}║              ✓ PACKAGE TESTS COMPLETED!                  
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
 echo ""
 
-echo -e "${YELLOW}Test project location: ${TEST_DIR}${NC}"
-echo ""
-echo -e "${YELLOW}To explore the test project:${NC}"
-echo -e "  ${BLUE}cd ${TEST_DIR}${NC}"
-echo -e "  ${BLUE}ls -la node_modules/@teaching-playground/core${NC}"
-echo ""
-echo -e "${YELLOW}To clean up test project:${NC}"
-echo -e "  ${BLUE}rm -rf ${TEST_DIR}${NC}"
-echo ""
 echo -e "${GREEN}✓ Package is ready to publish!${NC}"
 echo ""
