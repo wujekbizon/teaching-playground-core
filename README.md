@@ -384,6 +384,28 @@ const stream = await navigator.mediaDevices.getUserMedia({
 await connection.startStream(stream, 'high');
 ```
 
+## Browser Classroom Harness
+
+An internal React/Vite harness lives in `examples/classroom-harness`. It uses
+only the public `@teaching-playground/core` API and is intended for real-browser
+validation of camera/microphone permissions, multi-tab WebRTC, chat, participant
+controls, screen sharing, recording, and lifecycle cleanup.
+
+```bash
+# Terminal 1: standalone Socket.IO server
+pnpm server:dev
+
+# Terminal 2: install the example once, then run it
+pnpm --dir examples/classroom-harness install
+pnpm harness:dev
+```
+
+Open `http://localhost:5173` in two tabs, choose different names/roles, and join
+the same room. The Events panel records received and emitted classroom events to
+make negotiation and cleanup problems reproducible. For protected deployments,
+provide a real token and configure the server's `identityProvider`; the harness
+passes the token through the Socket.IO handshake.
+
 ### 8. Record Lecture (v1.4.0)
 
 ```typescript

@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.1.0] - 2026-08-03
+
+### Added
+
+- Added a private React/Vite classroom harness under
+  `examples/classroom-harness` that consumes only the package's public API.
+- Added authenticated connection setup for server URL, room, display name,
+  teacher/student/admin role, and Socket.IO handshake token.
+- Added real browser camera and microphone acquisition with local preview,
+  device track toggles, screen sharing, and client-side recording download.
+- Added multi-peer video rendering and WebRTC setup for initial room state and
+  newly joined participants.
+- Added participant state, teacher mute controls, hand raising, chat history,
+  live chat, and automatic participant/media cleanup on leave.
+- Added a bounded event inspector for incoming, outgoing, and local diagnostic
+  events to make browser negotiation and lifecycle bugs reproducible.
+- Added root `harness:dev` and `harness:build` scripts plus an acceptance-flow
+  guide for two-tab teacher/student testing.
+
+### Changed
+
+- Updated the root README with classroom harness installation, startup,
+  authentication, and multi-tab usage instructions.
+
+### Validation
+
+- Core TypeScript build, ESLint, and Jest checks continue to pass.
+- Harness dependency installation is currently blocked in the validation
+  container by npm registry HTTP 403 policy; the harness build command is in
+  place for connected development and CI environments.
+
 ## [2.0.0] - 2026-08-03
 
 This major release completes the P0, P1, and immediately actionable P2 work
