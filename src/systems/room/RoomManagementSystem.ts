@@ -1,18 +1,23 @@
-import { SystemError, RoomConfig } from '../../interfaces'
+import { SystemError, RoomConfig, PersistenceAdapter } from '../../interfaces'
 import { Room, CreateRoomOptions, RoomState, RoomParticipant } from '../../interfaces/room.interface'
 import { JsonDatabase } from '../../utils/JsonDatabase'
 import { User } from '../../interfaces/user.interface'
 import { Lecture } from '../../interfaces/event.interface'
 import { RealTimeCommunicationSystem } from '../comms/RealTimeCommunicationSystem'
+import { randomUUID } from 'crypto'
 
 export class RoomManagementSystem {
-  private db: JsonDatabase
+  private db: PersistenceAdapter
   private commsSystem: RealTimeCommunicationSystem
 
-  constructor(private config?: RoomConfig) {
+  constructor(
+    private config?: RoomConfig,
+    commsSystem?: RealTimeCommunicationSystem,
+    persistence?: PersistenceAdapter
+  ) {
     // Use singleton instance of JsonDatabase
-    this.db = JsonDatabase.getInstance()
-    this.commsSystem = new RealTimeCommunicationSystem()
+    this.db = persistence ?? JsonDatabase.getInstance()
+    this.commsSystem = commsSystem ?? new RealTimeCommunicationSystem()
     console.log('RoomManagementSystem initialized with singleton database instance')
   }
 
@@ -23,7 +28,7 @@ export class RoomManagementSystem {
   async createRoom(options: CreateRoomOptions): Promise<Room> {
     try {
       const room: Room = {
-        id: `room_${Date.now()}`,
+        id: `room_${randomUUID()}`,
         name: options.name,
         capacity: options.capacity,
         status: 'available',

@@ -39,6 +39,9 @@ describe('EventManagementSystem - Lecture Lifecycle Integration (v1.4.6)', () =>
       await db.delete('rooms', { id: 'room-test-1' })
       await db.delete('rooms', { id: 'room-test-2' })
       await db.delete('rooms', { id: 'room-test-3' })
+      await db.delete('events', { roomId: 'room-test-1' })
+      await db.delete('events', { roomId: 'room-test-2' })
+      await db.delete('events', { roomId: 'room-test-3' })
     } catch (error) {
       // Ignore cleanup errors
     }

@@ -1,7 +1,6 @@
 import { io, Socket } from 'socket.io-client'
 import { EventEmitter } from 'events'
 import { User } from '../interfaces/user.interface'
-import { WebRTCService } from './WebRTCService'
 import { SystemError } from '../interfaces'
 
 interface RoomMessage {
@@ -19,9 +18,13 @@ interface StreamState {
   quality: 'low' | 'medium' | 'high'
 }
 
+export interface RoomConnectionOptions {
+  auth?: Record<string, unknown>
+  rtcConfiguration?: RTCConfiguration
+}
+
 export class RoomConnection extends EventEmitter {
   private socket: Socket | null = null
-  private webrtc: WebRTCService
   private isConnected = false
   private connectedPeers: Set<string> = new Set()
   private messageHistory: RoomMessage[] = []
@@ -37,6 +40,7 @@ export class RoomConnection extends EventEmitter {
   // v1.2.0: WebRTC peer connection management
   private peerConnections: Map<string, RTCPeerConnection> = new Map()
   private remoteStreams: Map<string, MediaStream> = new Map()
+  private pendingIceCandidates: Map<string, RTCIceCandidateInit[]> = new Map()
   private screenShareStream: MediaStream | null = null
   private originalVideoTrack: MediaStreamTrack | null = null
 
@@ -49,51 +53,10 @@ export class RoomConnection extends EventEmitter {
   constructor(
     private roomId: string,
     private user: User,
-    private serverUrl: string
+    private serverUrl: string,
+    private options: RoomConnectionOptions = {}
   ) {
     super()
-    this.webrtc = new WebRTCService()
-    this.setupWebRTCEvents()
-  }
-
-  private setupWebRTCEvents() {
-    this.webrtc.on('iceCandidate', ({ peerId, candidate }) => {
-      if (this.isConnected && this.socket) {
-        console.log('ICE candidate generated for peer:', peerId)
-        this.socket.emit('ice_candidate', {
-          roomId: this.roomId,
-          peerId,
-          candidate
-        })
-      }
-    })
-
-    this.webrtc.on('remoteStream', ({ peerId, stream }) => {
-      console.log('Received remote stream from peer:', peerId)
-      this.emit('stream_added', { peerId, stream })
-    })
-
-    this.webrtc.on('peerDisconnected', (peerId) => {
-      console.log('Peer disconnected:', peerId)
-      this.emit('stream_removed', peerId)
-      this.connectedPeers.delete(peerId)
-    })
-
-    this.webrtc.on('negotiationNeeded', async (peerId) => {
-      if (this.isConnected && this.socket) {
-        console.log('Negotiation needed for peer:', peerId)
-        try {
-          const offer = await this.webrtc.createOffer(peerId)
-          this.socket.emit('offer', {
-            roomId: this.roomId,
-            to: peerId,
-            offer
-          })
-        } catch (error) {
-          console.error('Failed to create offer during negotiation:', error)
-        }
-      }
-    })
   }
 
   connect() {
@@ -109,7 +72,8 @@ export class RoomConnection extends EventEmitter {
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
       reconnectionDelay: this.reconnectDelay,
-      timeout: 10000
+      timeout: 10000,
+      auth: this.options.auth,
     })
 
     this.setupSocketListeners()
@@ -123,22 +87,18 @@ export class RoomConnection extends EventEmitter {
       console.log('Socket connected, joining room:', this.roomId)
       this.isConnected = true
       this.reconnectAttempts = 0
-      this.emit('connected')
       this.joinRoom()
     })
 
     this.socket.on('connect_error', (error) => {
       console.error('Connection error:', error)
-      this.handleReconnect()
+      this.emit('connection_error', error)
     })
 
     this.socket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason)
       this.isConnected = false
       this.emit('disconnected')
-      if (this.shouldReconnect) {
-        this.handleReconnect()
-      }
     })
 
     // Add listener for 'welcome' event
@@ -147,13 +107,26 @@ export class RoomConnection extends EventEmitter {
     })
 
     // v1.1.0: room_state no longer includes messages
-    this.socket.on('room_state', (state: {
+    this.socket.on('room_state', async (state: {
       stream: StreamState | null,
       participants: any[] // Now full participant objects
     }) => {
       console.log('Received room state:', state)
       this.currentStream = state.stream
       this.emit('room_state', state)
+
+      // Report readiness only after the server has accepted room membership.
+      // This prevents consumers from sending protected room events in the gap
+      // between the transport connection and the room_state acknowledgement.
+      this.emit('connected')
+
+      for (const participant of state.participants) {
+        const peerId = participant.socketId
+        if (peerId && peerId !== this.socket?.id) {
+          this.connectedPeers.add(peerId)
+          await this.setupPeerConnection(peerId, this.localStream)
+        }
+      }
 
       // Request message history separately
       this.socket?.emit('request_message_history', this.roomId)
@@ -172,31 +145,6 @@ export class RoomConnection extends EventEmitter {
         this.messageHistory.shift()
       }
       this.emit('message_received', message)
-    })
-
-    // WebRTC signaling events
-    this.socket.on('offer_received', async ({ from, offer }) => {
-      try {
-        await this.handleOffer(from, offer)
-      } catch (error) {
-        console.error('Failed to handle offer:', error)
-      }
-    })
-
-    this.socket.on('answer_received', async ({ from, answer }) => {
-      try {
-        await this.handleAnswer(from, answer)
-      } catch (error) {
-        console.error('Failed to handle answer:', error)
-      }
-    })
-
-    this.socket.on('ice_candidate_received', async ({ from, candidate }) => {
-      try {
-        await this.handleIceCandidate(from, candidate)
-      } catch (error) {
-        console.error('Failed to handle ICE candidate:', error)
-      }
     })
 
     // v1.2.0: New WebRTC signaling event listeners (standardized format)
@@ -234,6 +182,7 @@ export class RoomConnection extends EventEmitter {
       // Clear local state
       this.messageHistory = []
       this.currentStream = null
+      this.closeAllPeerConnections()
     })
 
     this.socket.on('stream_started', (state: StreamState) => {
@@ -251,12 +200,17 @@ export class RoomConnection extends EventEmitter {
       const socketId = participant.socketId || participant.id
       this.connectedPeers.add(socketId)
       this.emit('user_joined', participant)
+      if (this.localStream) {
+        void this.setupPeerConnection(socketId, this.localStream)
+          .then(() => this.createOffer(socketId))
+          .catch(error => this.emit('webrtc_error', { peerId: socketId, error }))
+      }
     })
 
     this.socket.on('user_left', (participant: any) => {
       // v1.1.0: user_left now sends full participant object
       const socketId = participant.socketId || participant.id
-      this.webrtc.closeConnection(socketId)
+      this.closePeerConnection(socketId)
       this.connectedPeers.delete(socketId)
       this.emit('user_left', participant)
     })
@@ -273,6 +227,10 @@ export class RoomConnection extends EventEmitter {
     this.socket.on('server_shutdown', (data: { message: string; timestamp: string }) => {
       console.log('Server shutting down:', data)
       this.emit('server_shutdown', data)
+    })
+
+    this.socket.on('join_room_error', (data) => {
+      this.emit('join_room_error', data)
     })
 
     // v1.3.1: Participant control events
@@ -325,23 +283,6 @@ export class RoomConnection extends EventEmitter {
     })
   }
 
-  private handleReconnect() {
-    if (!this.shouldReconnect) return
-
-    this.reconnectAttempts++
-    if (this.reconnectAttempts <= this.maxReconnectAttempts) {
-      console.log(`Reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`)
-      setTimeout(() => {
-        if (this.shouldReconnect) {
-          this.connect()
-        }
-      }, this.reconnectDelay * this.reconnectAttempts)
-    } else {
-      console.error('Max reconnection attempts reached')
-      this.emit('error', new Error('Failed to connect after maximum attempts'))
-    }
-  }
-
   private joinRoom() {
     if (!this.socket || !this.isConnected) return
     // v1.1.0: Send full user object
@@ -351,9 +292,9 @@ export class RoomConnection extends EventEmitter {
   disconnect() {
     console.log('Initiating disconnect sequence')
     this.shouldReconnect = false
-    
+
     // 1. Clean up WebRTC
-    this.webrtc.closeAllConnections()
+    this.closeAllPeerConnections()
     console.log('WebRTC connections closed')
 
     // 2. Disconnect socket
@@ -376,6 +317,7 @@ export class RoomConnection extends EventEmitter {
     }
 
     console.log('Starting stream with quality:', quality)
+    this.localStream = stream
 
     // Emit a stream_status_change event before sending to the server
     this.emit('stream_status_change', { isStreaming: true, userId: this.user.id, username: this.user.username });
@@ -392,13 +334,8 @@ export class RoomConnection extends EventEmitter {
     for (const peerId of this.connectedPeers) {
       if (peerId !== this.socket.id) {
         try {
-          await this.webrtc.addStream(peerId, stream)
-          const offer = await this.webrtc.createOffer(peerId)
-          this.socket.emit('offer', {
-            roomId: this.roomId,
-            to: peerId,
-            offer
-          })
+          await this.setupPeerConnection(peerId, stream)
+          await this.createOffer(peerId)
         } catch (error) {
           console.error(`Failed to set up WebRTC with peer ${peerId}:`, error)
         }
@@ -415,12 +352,12 @@ export class RoomConnection extends EventEmitter {
     }
 
     console.log('Stopping stream')
-    
+
     // Emit a stream_status_change event before sending to the server
     this.emit('stream_status_change', { isStreaming: false, userId: this.user.id, username: this.user.username });
-    
+
     this.socket.emit('stop_stream', this.roomId)
-    this.webrtc.closeAllConnections()
+    this.closeAllPeerConnections()
   }
 
   sendMessage(content: string) {
@@ -451,38 +388,6 @@ export class RoomConnection extends EventEmitter {
     return this.isConnected
   }
 
-  private async handleOffer(from: string, offer: RTCSessionDescriptionInit) {
-    try {
-      console.log('Handling offer from:', from)
-      const answer = await this.webrtc.handleOffer(from, offer)
-      this.socket?.emit('answer', {
-        roomId: this.roomId,
-        to: from,
-        answer
-      })
-    } catch (error) {
-      console.error('Failed to handle offer:', error)
-    }
-  }
-
-  private async handleAnswer(from: string, answer: RTCSessionDescriptionInit) {
-    try {
-      console.log('Handling answer from:', from)
-      await this.webrtc.handleAnswer(from, answer)
-    } catch (error) {
-      console.error('Failed to handle answer:', error)
-    }
-  }
-
-  private async handleIceCandidate(from: string, candidate: RTCIceCandidate) {
-    try {
-      console.log('Handling ICE candidate from:', from)
-      await this.webrtc.handleIceCandidate(from, candidate)
-    } catch (error) {
-      console.error('Failed to handle ICE candidate:', error)
-    }
-  }
-
   /**
    * v1.2.0: Setup WebRTC peer connection with another participant
    * v1.4.2: Made localStream optional to support receiving-only connections
@@ -493,7 +398,17 @@ export class RoomConnection extends EventEmitter {
     peerId: string,
     localStream?: MediaStream | null
   ): Promise<RTCPeerConnection> {
-    const iceServers = {
+    const existing = this.peerConnections.get(peerId)
+    if (existing) {
+      if (localStream) {
+        const existingTrackIds = new Set(existing.getSenders().map(sender => sender.track?.id))
+        localStream.getTracks().forEach(track => {
+          if (!existingTrackIds.has(track.id)) existing.addTrack(track, localStream)
+        })
+      }
+      return existing
+    }
+    const iceServers: RTCConfiguration = this.options.rtcConfiguration ?? {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
@@ -570,6 +485,7 @@ export class RoomConnection extends EventEmitter {
 
     if (this.socket) {
       this.socket.emit('webrtc:offer', {
+        roomId: this.roomId,
         targetPeerId: peerId,
         offer: pc.localDescription
       })
@@ -588,11 +504,10 @@ export class RoomConnection extends EventEmitter {
     offer: RTCSessionDescriptionInit
   ): Promise<void> {
     const pc = this.peerConnections.get(fromPeerId)
-    if (!pc) {
-      throw new Error(`No peer connection found for ${fromPeerId}`)
-    }
+      ?? await this.setupPeerConnection(fromPeerId, this.localStream)
 
     await pc.setRemoteDescription(new RTCSessionDescription(offer))
+    await this.flushPendingIceCandidates(fromPeerId, pc)
 
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
@@ -622,6 +537,7 @@ export class RoomConnection extends EventEmitter {
     }
 
     await pc.setRemoteDescription(new RTCSessionDescription(answer))
+    await this.flushPendingIceCandidates(fromPeerId, pc)
     console.log(`Received WebRTC answer from ${fromPeerId}`)
   }
 
@@ -636,7 +552,16 @@ export class RoomConnection extends EventEmitter {
   ): Promise<void> {
     const pc = this.peerConnections.get(fromPeerId)
     if (!pc) {
-      console.warn(`No peer connection found for ${fromPeerId}`)
+      const pending = this.pendingIceCandidates.get(fromPeerId) ?? []
+      pending.push(candidate)
+      this.pendingIceCandidates.set(fromPeerId, pending)
+      return
+    }
+
+    if (!pc.remoteDescription) {
+      const pending = this.pendingIceCandidates.get(fromPeerId) ?? []
+      pending.push(candidate)
+      this.pendingIceCandidates.set(fromPeerId, pending)
       return
     }
 
@@ -654,7 +579,25 @@ export class RoomConnection extends EventEmitter {
       pc.close()
       this.peerConnections.delete(peerId)
       this.remoteStreams.delete(peerId)
+      this.pendingIceCandidates.delete(peerId)
     }
+  }
+
+  private async flushPendingIceCandidates(peerId: string, pc: RTCPeerConnection): Promise<void> {
+    const candidates = this.pendingIceCandidates.get(peerId) ?? []
+    this.pendingIceCandidates.delete(peerId)
+    for (const candidate of candidates) {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate))
+    }
+  }
+
+  private closeAllPeerConnections(): void {
+    for (const peerId of this.peerConnections.keys()) {
+      this.closePeerConnection(peerId)
+    }
+    this.peerConnections.clear()
+    this.remoteStreams.clear()
+    this.pendingIceCandidates.clear()
   }
 
   /**
@@ -1015,4 +958,4 @@ export class RoomConnection extends EventEmitter {
     // Fallback
     return 'video/webm'
   }
-} 
+}
