@@ -1,7 +1,58 @@
 import { io, Socket } from 'socket.io-client'
-import { EventEmitter } from 'events'
-import { User } from '../interfaces/user.interface'
-import { SystemError } from '../interfaces'
+import type { User } from '../interfaces/user.interface.js'
+import { SystemError } from '../interfaces/errors.interface.js'
+
+type RoomEventListener = (...args: any[]) => void
+
+/**
+ * Minimal browser-safe event emitter used by the public RoomConnection API.
+ *
+ * Depending on Node's `events` module made the generated declaration inherit
+ * `on()` from `@types/node` and made the browser bundle require a Node built-in.
+ * Consumers should not need Node types or a polyfill to listen for room events.
+ */
+class RoomEventEmitter {
+  private readonly listeners = new Map<string | symbol, Set<RoomEventListener>>()
+
+  on(event: string | symbol, listener: RoomEventListener): this {
+    const eventListeners = this.listeners.get(event) ?? new Set<RoomEventListener>()
+    eventListeners.add(listener)
+    this.listeners.set(event, eventListeners)
+    return this
+  }
+
+  once(event: string | symbol, listener: RoomEventListener): this {
+    const wrapper: RoomEventListener = (...args) => {
+      this.off(event, wrapper)
+      listener(...args)
+    }
+    return this.on(event, wrapper)
+  }
+
+  off(event: string | symbol, listener: RoomEventListener): this {
+    const eventListeners = this.listeners.get(event)
+    eventListeners?.delete(listener)
+    if (eventListeners?.size === 0) this.listeners.delete(event)
+    return this
+  }
+
+  removeListener(event: string | symbol, listener: RoomEventListener): this {
+    return this.off(event, listener)
+  }
+
+  removeAllListeners(event?: string | symbol): this {
+    if (event === undefined) this.listeners.clear()
+    else this.listeners.delete(event)
+    return this
+  }
+
+  emit(event: string | symbol, ...args: any[]): boolean {
+    const eventListeners = this.listeners.get(event)
+    if (!eventListeners?.size) return false
+    for (const listener of [...eventListeners]) listener(...args)
+    return true
+  }
+}
 
 interface RoomMessage {
   messageId: string  // v1.1.0: Added unique message ID
@@ -23,7 +74,7 @@ export interface RoomConnectionOptions {
   rtcConfiguration?: RTCConfiguration
 }
 
-export class RoomConnection extends EventEmitter {
+export class RoomConnection extends RoomEventEmitter {
   private socket: Socket | null = null
   private isConnected = false
   private connectedPeers: Set<string> = new Set()
@@ -322,12 +373,15 @@ export class RoomConnection extends EventEmitter {
     // Emit a stream_status_change event before sending to the server
     this.emit('stream_status_change', { isStreaming: true, userId: this.user.id, username: this.user.username });
 
-    // Send as object (v1.1.2 API)
-    this.socket.emit('start_stream', {
-      roomId: this.roomId,
-      username: this.user.username,
-      quality
-    })
+    // The server's room-level stream state represents the instructor broadcast.
+    // Students still publish peer media, but must not claim that broadcast slot.
+    if (this.user.role === 'teacher' || this.user.role === 'admin') {
+      this.socket.emit('start_stream', {
+        roomId: this.roomId,
+        username: this.user.username,
+        quality
+      })
+    }
 
     // Set up WebRTC for each peer in the room
     console.log('Setting up WebRTC for peers:', Array.from(this.connectedPeers))
@@ -356,7 +410,9 @@ export class RoomConnection extends EventEmitter {
     // Emit a stream_status_change event before sending to the server
     this.emit('stream_status_change', { isStreaming: false, userId: this.user.id, username: this.user.username });
 
-    this.socket.emit('stop_stream', this.roomId)
+    if (this.user.role === 'teacher' || this.user.role === 'admin') {
+      this.socket.emit('stop_stream', this.roomId)
+    }
     this.closeAllPeerConnections()
   }
 
@@ -386,6 +442,11 @@ export class RoomConnection extends EventEmitter {
 
   getConnectionStatus(): boolean {
     return this.isConnected
+  }
+
+  /** Return the transport identity used to match this client in room state. */
+  getSocketId(): string | undefined {
+    return this.socket?.id
   }
 
   /**
