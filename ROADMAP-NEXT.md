@@ -1,14 +1,21 @@
 # Teaching Playground - Next Features Roadmap
 
-**Current Version**: v1.4.4 (userId Fix + Database Optimization)
-**Status**: Production Ready
-**Last Updated**: 2025-11-09
+**Current Version**: v2.2.2
+**Status**: Classroom core validated; production scheduling and infrastructure in progress
+**Last Updated**: 2026-08-04
+
+> **Canonical production plan:** The prioritized plan for multi-school rooms,
+> conflict-safe scheduling, the expanded rooms/scheduling harness, lifecycle
+> automation, production persistence, TURN, Redis, and operational readiness is
+> maintained in [`PRODUCT-IMPLEMENTATION-PLAN.md`](PRODUCT-IMPLEMENTATION-PLAN.md).
+> The feature proposals below remain useful design references, but they follow
+> the production foundation in that plan.
 
 ---
 
-## 📊 Current Status Assessment
+## 📊 Historical Feature Status Assessment
 
-### ✅ What's Completed in Production
+### ✅ What the earlier v1.x roadmap marked complete
 
 **v1.4.4 - Critical Bug Fixes:**
 - ✅ user_joined event includes userId field

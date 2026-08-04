@@ -501,6 +501,10 @@ connection.on('hand_raised', ({ userId, username }) => {
 
 ## API Documentation
 
+For the prioritized multi-school room catalog, reservation scheduler, harness
+UI, TURN, and horizontal-scaling work, see the
+[`Production Classroom and Scheduling Plan`](PRODUCT-IMPLEMENTATION-PLAN.md).
+
 ### TeachingPlayground Engine
 
 #### Constructor

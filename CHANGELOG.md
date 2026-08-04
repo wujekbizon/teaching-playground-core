@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.2.2] - 2026-08-04
+
+### Documentation
+
+- Added the canonical production classroom and scheduling implementation plan.
+- Defined organization-scoped rooms, conflict-safe reservations, scheduler
+  lifecycle, production persistence, TURN, Redis scaling, and operational
+  readiness milestones with explicit exit criteria.
+- Defined the classroom harness expansion for room catalog management,
+  scheduling and rescheduling, availability and conflict handling, lifecycle
+  controls, multi-room isolation, timezone behavior, and organization safety.
+- Clarified that multiple rooms can run on one backend and that Redis is needed
+  only when live state must span multiple backend instances.
+
 ## [2.2.1] - 2026-08-04
 
 ### Added
