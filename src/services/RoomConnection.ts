@@ -373,12 +373,15 @@ export class RoomConnection extends RoomEventEmitter {
     // Emit a stream_status_change event before sending to the server
     this.emit('stream_status_change', { isStreaming: true, userId: this.user.id, username: this.user.username });
 
-    // Send as object (v1.1.2 API)
-    this.socket.emit('start_stream', {
-      roomId: this.roomId,
-      username: this.user.username,
-      quality
-    })
+    // The server's room-level stream state represents the instructor broadcast.
+    // Students still publish peer media, but must not claim that broadcast slot.
+    if (this.user.role === 'teacher' || this.user.role === 'admin') {
+      this.socket.emit('start_stream', {
+        roomId: this.roomId,
+        username: this.user.username,
+        quality
+      })
+    }
 
     // Set up WebRTC for each peer in the room
     console.log('Setting up WebRTC for peers:', Array.from(this.connectedPeers))
@@ -407,7 +410,9 @@ export class RoomConnection extends RoomEventEmitter {
     // Emit a stream_status_change event before sending to the server
     this.emit('stream_status_change', { isStreaming: false, userId: this.user.id, username: this.user.username });
 
-    this.socket.emit('stop_stream', this.roomId)
+    if (this.user.role === 'teacher' || this.user.role === 'admin') {
+      this.socket.emit('stop_stream', this.roomId)
+    }
     this.closeAllPeerConnections()
   }
 

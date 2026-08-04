@@ -115,3 +115,34 @@ test('a late student receives chat history and subsequent messages', async ({ br
     await studentContext.close()
   }
 })
+
+test('teacher and student receive each other media', async ({ browser }) => {
+  const errors: string[] = []
+  const teacherContext = await browser.newContext({ permissions: ['camera', 'microphone'] })
+  const studentContext = await browser.newContext({ permissions: ['camera', 'microphone'] })
+  const teacher = await teacherContext.newPage()
+  const student = await studentContext.newPage()
+  teacher.on('pageerror', error => errors.push(`teacher: ${error.message}`))
+  student.on('pageerror', error => errors.push(`student: ${error.message}`))
+  const roomId = `media-${Date.now()}`
+
+  try {
+    await joinClassroom(teacher, 'teacher', 'media-teacher', roomId, true)
+    await joinClassroom(student, 'student', 'media-student', roomId, true)
+
+    await expect(teacher.getByText('2 participants')).toBeVisible()
+    await expect(student.getByText('2 participants')).toBeVisible()
+    await expect(teacher.locator('.video-card:not(.local):not(.empty) video')).toHaveCount(1)
+    await expect(student.locator('.video-card:not(.local):not(.empty) video')).toHaveCount(1)
+    await expect.poll(() => teacher.locator('.video-card:not(.local):not(.empty) video').evaluateAll(
+      videos => videos.every(video => (video as HTMLVideoElement).srcObject instanceof MediaStream),
+    )).toBe(true)
+    await expect.poll(() => student.locator('.video-card:not(.local):not(.empty) video').evaluateAll(
+      videos => videos.every(video => (video as HTMLVideoElement).srcObject instanceof MediaStream),
+    )).toBe(true)
+    expect(errors).toEqual([])
+  } finally {
+    await teacherContext.close()
+    await studentContext.close()
+  }
+})
