@@ -21,6 +21,20 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./room-connection": {
+      "types": "./dist/services/RoomConnection.d.ts",
+      "import": "./dist/services/RoomConnection.js"
+    },
+    "./user": {
+      "types": "./dist/interfaces/user.interface.d.ts",
+      "import": "./dist/interfaces/user.interface.js"
+    }
+  },
   "files": [
     "dist",
     "README.md",
@@ -45,8 +59,11 @@
     "lint": "eslint src --ext .ts",
     "server": "tsx src/server.ts",
     "server:dev": "tsx watch src/server.ts",
+    "preharness:dev": "pnpm build",
     "harness:dev": "pnpm --dir examples/classroom-harness dev",
+    "preharness:build": "pnpm build",
     "harness:build": "pnpm --dir examples/classroom-harness build",
+    "harness:test": "pnpm --dir examples/classroom-harness test:e2e",
     "test:package": "./scripts/test-package.sh",
     "test:integration": "./scripts/test-in-project.sh",
     "prepack": "npm run build",

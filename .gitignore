@@ -2,6 +2,8 @@ node_modules
 *.tsbuildinfo
 examples/classroom-harness/vite.config.js
 examples/classroom-harness/vite.config.d.ts
+examples/classroom-harness/playwright-report/
+examples/classroom-harness/test-results/
 
 dist/
 
