@@ -400,6 +400,11 @@ pnpm --dir examples/classroom-harness install
 pnpm harness:dev
 ```
 
+`harness:dev` builds the core package before starting Vite. This is required
+because the example consumes the repository through its browser-safe
+`room-connection` package entry point in `dist`, just like an installed
+application does.
+
 Open `http://localhost:5173` in two tabs, choose different names/roles, and join
 the same room. The Events panel records received and emitted classroom events to
 make negotiation and cleanup problems reproducible. For protected deployments,

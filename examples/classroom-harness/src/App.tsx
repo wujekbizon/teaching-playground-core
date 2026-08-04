@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { RoomConnection, type User } from '@teaching-playground/core'
+import { RoomConnection } from '@teaching-playground/core/room-connection'
+import type { User } from '@teaching-playground/core/user'
 
 type Participant = User & {
   userId?: string
