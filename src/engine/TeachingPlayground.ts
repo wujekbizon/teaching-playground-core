@@ -111,7 +111,7 @@ export default class TeachingPlayground {
     return this.eventSystem.listReservations({ ...filter, organizationId: this.requireOrganization() })
   }
 
-  async getRoomAvailability(options: { startsAt: string; endsAt: string; capacity?: number }) {
+  async getRoomAvailability(options: { startsAt: string; endsAt: string; capacity?: number; excludeReservationId?: string }) {
     return this.eventSystem.getRoomAvailability({ ...options, organizationId: this.requireOrganization() })
   }
 

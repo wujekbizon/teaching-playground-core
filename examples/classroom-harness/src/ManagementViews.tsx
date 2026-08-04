@@ -30,6 +30,8 @@ export function ManagementViews({ view, setView, serverUrl, onJoinReservation }:
   const [startsAt, setStartsAt] = useState('2026-09-01T10:00')
   const [endsAt, setEndsAt] = useState('2026-09-01T11:00')
   const [availableRoomIds, setAvailableRoomIds] = useState<string[] | null>(null)
+  const [availabilityMessage, setAvailabilityMessage] = useState('Choose an interval and search to select a room.')
+  const [searchingAvailability, setSearchingAvailability] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
@@ -39,10 +41,9 @@ export function ManagementViews({ view, setView, serverUrl, onJoinReservation }:
         request<Room[]>(serverUrl, '/api/rooms'), request<Reservation[]>(serverUrl, '/api/reservations'),
       ])
       setRooms(nextRooms); setReservations(nextReservations)
-      if (!selectedRoom && nextRooms[0]) setSelectedRoom(nextRooms[0].id)
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setLoading(false) }
-  }, [selectedRoom, serverUrl])
+  }, [serverUrl])
 
   useEffect(() => { void refresh() }, [refresh])
 
@@ -83,13 +84,34 @@ export function ManagementViews({ view, setView, serverUrl, onJoinReservation }:
 
   const searchAvailability = async () => {
     setError('')
+    const start = new Date(startsAt)
+    const end = new Date(endsAt)
+    if (!startsAt || !endsAt || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) {
+      setAvailableRoomIds([]); setAvailabilityMessage('Enter a valid interval with the end after the start.')
+      return
+    }
+    setSearchingAvailability(true); setAvailabilityMessage('Searching available rooms…')
     try {
-      const query = new URLSearchParams({ startsAt: new Date(startsAt).toISOString(),
-        endsAt: new Date(endsAt).toISOString(), capacity: String(roomCapacity) })
+      const query = new URLSearchParams({ startsAt: start.toISOString(),
+        endsAt: end.toISOString(), capacity: String(roomCapacity) })
+      if (editingId) query.set('excludeReservationId', editingId)
       const available = await request<Room[]>(serverUrl, `/api/availability?${query}`)
       setAvailableRoomIds(available.map(room => room.id))
-      if (available[0]) setSelectedRoom(available[0].id)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+      if (available[0]) {
+        setSelectedRoom(available[0].id)
+        setAvailabilityMessage(`${available.length} available ${available.length === 1 ? 'room' : 'rooms'} found. Select one below.`)
+      } else {
+        setSelectedRoom(''); setAvailabilityMessage('No room is available for this interval and capacity.')
+      }
+    } catch (reason) {
+      setAvailableRoomIds(null); setAvailabilityMessage('Availability search failed. Correct the error and try again.')
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally { setSearchingAvailability(false) }
+  }
+
+  const resetAvailability = () => {
+    setAvailableRoomIds(null); setSelectedRoom('')
+    setAvailabilityMessage('Search again after changing the interval or capacity.')
   }
 
   const visibleRooms = rooms.filter(room => room.capacity >= capacityFilter)
@@ -110,7 +132,7 @@ export function ManagementViews({ view, setView, serverUrl, onJoinReservation }:
         </div>
       </> : <div className="management-grid">
         <section className="catalog"><h2>Upcoming reservations</h2>{reservations.length === 0 ? <div className="management-empty">No lectures scheduled.</div> : reservations.map(item => <article className="reservation-row" key={item.id}><div><strong>{item.name}</strong><small>{new Date(item.startsAt).toLocaleString()} – {new Date(item.endsAt).toLocaleTimeString()}</small></div><span>{rooms.find(room => room.id === item.roomId)?.name ?? item.roomId}</span><span className={`status ${item.status}`}>{item.status}</span>{item.status !== 'cancelled' && <div className="reservation-actions"><button onClick={() => editReservation(item)}>Reschedule</button><button onClick={() => void cancel(item.id)}>Cancel</button>{(item.status === 'open' || item.status === 'in-progress') && <button onClick={() => onJoinReservation?.(item)}>Join live</button>}</div>}</article>)}</section>
-        <form className="management-form" onSubmit={schedule}><h2>{editingId ? 'Reschedule lecture' : 'Schedule lecture'}</h2><label>Subject / name<input required minLength={3} disabled={editingId !== null} value={lectureName} onChange={event => setLectureName(event.target.value)} /></label><label>Starts<input required type="datetime-local" value={startsAt} onChange={event => { setStartsAt(event.target.value); setAvailableRoomIds(null) }} /></label><label>Ends<input required type="datetime-local" value={endsAt} onChange={event => { setEndsAt(event.target.value); setAvailableRoomIds(null) }} /></label><label>Capacity<input required type="number" min="1" disabled={editingId !== null} value={roomCapacity} onChange={event => { setRoomCapacity(Number(event.target.value)); setAvailableRoomIds(null) }} /></label><button type="button" className="secondary" onClick={() => void searchAvailability()}>Search available rooms</button><label>Room<select required value={selectedRoom} onChange={event => setSelectedRoom(event.target.value)}>{rooms.filter(room => availableRoomIds === null || availableRoomIds.includes(room.id)).map(room => <option key={room.id} value={room.id}>{room.name} · {room.capacity} seats</option>)}</select></label>{availableRoomIds?.length === 0 && <div className="management-error">No room is available for this interval and capacity.</div>}<button className="primary" disabled={availableRoomIds?.length === 0}>{editingId ? 'Save new time' : 'Schedule lecture'}</button>{editingId && <button type="button" className="secondary" onClick={() => { setEditingId(null); setLectureName('') }}>Discard changes</button>}</form>
+        <form className="management-form" onSubmit={schedule}><h2>{editingId ? 'Reschedule lecture' : 'Schedule lecture'}</h2><label>Subject / name<input required minLength={3} disabled={editingId !== null} value={lectureName} onChange={event => setLectureName(event.target.value)} /></label><label>Starts<input required type="datetime-local" value={startsAt} onChange={event => { setStartsAt(event.target.value); resetAvailability() }} /></label><label>Ends<input required type="datetime-local" value={endsAt} onChange={event => { setEndsAt(event.target.value); resetAvailability() }} /></label><label>Capacity<input required type="number" min="1" disabled={editingId !== null} value={roomCapacity} onChange={event => { setRoomCapacity(Number(event.target.value)); resetAvailability() }} /></label><button type="button" className="secondary availability-button" disabled={searchingAvailability || roomCapacity < 1 || !startsAt || !endsAt} onClick={() => void searchAvailability()}>{searchingAvailability ? 'Searching…' : 'Search available rooms'}</button><div className={`availability-result ${availableRoomIds?.length ? 'success' : ''}`} role="status">{availabilityMessage}</div><label>Available room<select required disabled={availableRoomIds === null || availableRoomIds.length === 0} value={selectedRoom} onChange={event => setSelectedRoom(event.target.value)}><option value="">Select an available room</option>{rooms.filter(room => availableRoomIds?.includes(room.id)).map(room => <option key={room.id} value={room.id}>{room.name} · {room.capacity} seats</option>)}</select></label><button className="primary" disabled={!selectedRoom || !availableRoomIds?.includes(selectedRoom)}>{editingId ? 'Save new time' : 'Schedule lecture'}</button>{editingId && <button type="button" className="secondary" onClick={() => { setEditingId(null); setLectureName(''); resetAvailability() }}>Discard changes</button>}</form>
       </div>}
     </main>
   </div>

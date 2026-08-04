@@ -131,6 +131,7 @@ export async function startWebSocketServer(port: number = 3001) {
         else if (url.pathname === '/api/availability' && req.method === 'GET') respond(200, await scheduling.getRoomAvailability({
           startsAt: url.searchParams.get('startsAt') ?? '', endsAt: url.searchParams.get('endsAt') ?? '',
           capacity: url.searchParams.has('capacity') ? Number(url.searchParams.get('capacity')) : undefined,
+          excludeReservationId: url.searchParams.get('excludeReservationId') ?? undefined,
         }))
         else {
           const cancelMatch = url.pathname.match(/^\/api\/reservations\/([^/]+)\/cancel$/)

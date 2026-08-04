@@ -69,7 +69,7 @@ describe('EventManagementSystem reservation scheduling', () => {
   })
 
   it('scopes range queries and availability to an organization', async () => {
-    await system.scheduleReservation(base)
+    const existing = await system.scheduleReservation(base)
     await system.scheduleReservation({ ...base, roomId: 'room-b', capacity: 5, startsAt: base.endsAt,
       endsAt: '2026-09-01T12:00:00.000Z' })
     await expect(system.listReservations({ organizationId: 'school-a', from: '2026-09-01T09:30:00.000Z',
@@ -77,6 +77,9 @@ describe('EventManagementSystem reservation scheduling', () => {
     const rooms = await system.getRoomAvailability({ organizationId: 'school-a', startsAt: base.startsAt,
       endsAt: base.endsAt, capacity: 5 })
     expect(rooms.map(room => room.id)).toEqual(['room-b'])
+    const rescheduleRooms = await system.getRoomAvailability({ organizationId: 'school-a', startsAt: base.startsAt,
+      endsAt: base.endsAt, capacity: 20, excludeReservationId: existing.id })
+    expect(rescheduleRooms.map(room => room.id)).toEqual(['room-a'])
   })
 
   it('reschedules without self-conflict and releases cancelled intervals', async () => {

@@ -22,14 +22,26 @@ test('creates, filters, maintains, and schedules an organization room', async ({
   await page.getByRole('button', { name: 'Schedule' }).click()
   await page.getByLabel('Subject / name').fill(`Clinical workshop ${suffix}`)
   await page.getByLabel('Capacity', { exact: true }).fill('20')
-  await page.getByRole('button', { name: 'Search available rooms' }).click()
-  await page.getByLabel('Room').selectOption({ label: `${roomName} · 36 seats` })
+  await expect(page.getByLabel('Available room')).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Schedule lecture' })).toBeDisabled()
+  const [availabilityResponse] = await Promise.all([
+    page.waitForResponse(response => response.url().includes('/api/availability')),
+    page.getByRole('button', { name: 'Search available rooms' }).click(),
+  ])
+  expect(availabilityResponse.status()).toBe(200)
+  expect((await availabilityResponse.json()).some((available: { name: string }) => available.name === roomName)).toBe(true)
+  await expect(page.getByRole('status')).toContainText('available room found')
+  await page.getByLabel('Available room').selectOption({ label: `${roomName} · 36 seats` })
+  await expect(page.getByRole('button', { name: 'Schedule lecture' })).toBeEnabled()
   await page.getByRole('button', { name: 'Schedule lecture' }).click()
   const reservation = page.locator('.reservation-row').filter({ hasText: `Clinical workshop ${suffix}` })
   await expect(reservation).toContainText('scheduled')
   await reservation.getByRole('button', { name: 'Reschedule' }).click()
   await page.getByLabel('Starts').fill('2026-09-01T11:00')
   await page.getByLabel('Ends').fill('2026-09-01T12:00')
+  await page.getByRole('button', { name: 'Search available rooms' }).click()
+  await expect(page.getByRole('status')).toContainText('available room found')
+  await page.getByLabel('Available room').selectOption({ label: `${roomName} · 36 seats` })
   await page.getByRole('button', { name: 'Save new time' }).click()
   await expect(reservation).toContainText('11:00')
 

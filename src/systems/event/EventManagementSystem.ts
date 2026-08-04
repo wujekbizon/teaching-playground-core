@@ -125,13 +125,13 @@ export class EventManagementSystem {
     } }) as LectureReservation
   }
 
-  async getRoomAvailability(options: { organizationId: string; startsAt: string; endsAt: string; capacity?: number }): Promise<any[]> {
+  async getRoomAvailability(options: { organizationId: string; startsAt: string; endsAt: string; capacity?: number; excludeReservationId?: string }): Promise<any[]> {
     EventManagementSystem.parseRange(options.startsAt, options.endsAt)
     const rooms = await this.db.find('rooms', { organizationId: options.organizationId })
     const available = []
     for (const room of rooms) {
       if (room.status === 'maintenance' || (options.capacity !== undefined && room.capacity < options.capacity)) continue
-      if (!await this.findConflict({ ...options, roomId: room.id })) available.push(room)
+      if (!await this.findConflict({ ...options, roomId: room.id }, options.excludeReservationId)) available.push(room)
     }
     return available
   }

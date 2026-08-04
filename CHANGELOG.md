@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.6.1] - 2026-08-04
+
+### Fixed
+
+- Made availability search an explicit required step before a room can be
+  selected or a lecture can be scheduled.
+- Added visible searching, success, empty, validation, and failure feedback so
+  clicking **Search available rooms** always produces a deterministic result.
+- Allowed availability searches during rescheduling to exclude the reservation
+  being edited without weakening the final conflict check.
+- Strengthened browser coverage to assert the availability HTTP response and
+  returned room before enabling scheduling.
+
 ## [2.6.0] - 2026-08-04
 
 ### Added
