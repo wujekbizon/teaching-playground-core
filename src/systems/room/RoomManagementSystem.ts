@@ -29,6 +29,7 @@ export class RoomManagementSystem {
     try {
       const room: Room = {
         id: `room_${randomUUID()}`,
+        organizationId: options.organizationId,
         name: options.name,
         capacity: options.capacity,
         status: 'available',
@@ -137,7 +138,7 @@ export class RoomManagementSystem {
     }
   }
 
-  async listRooms(filter?: { status?: Room['status'] }): Promise<Room[]> {
+  async listRooms(filter?: { organizationId?: string; status?: Room['status'] }): Promise<Room[]> {
     try {
       return await this.db.find('rooms', filter || {})
     } catch (error) {
