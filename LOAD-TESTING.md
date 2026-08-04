@@ -22,6 +22,29 @@ Optional flags are `--batch-size <n>`, `--timeout <ms>`, and `--verbose`.
 The command exits non-zero when any expected connection or fan-out event is
 missing or an operation times out.
 
+## Multi-room isolation baseline
+
+Phase 2D.0 runs independent teachers and students in at least three rooms on a
+single backend:
+
+```bash
+pnpm isolation:test
+```
+
+The scenario verifies that participant snapshots, chat, hand raises, mute-all
+moderation, stream start/stop, recording start/stop, and room cleanup remain
+scoped to the originating room. It emits a JSON report with per-room admission,
+interaction, and cleanup latency and aggregate event-loop, heap, and duration
+metrics. Use `--rooms <n>`, `--students-per-room <n>`, or `--timeout <ms>` to
+change the default three-room, eight-student-per-room run; fewer than three
+rooms are intentionally rejected.
+
+The initial local baseline used 27 concurrent participants across three rooms.
+All 24 isolation checks passed, interaction latency was 12 ms p50 / 16 ms p95,
+event-loop delay was 12 ms mean / 16 ms p95, heap growth was 5.0 MB, and the
+scenario completed in 243 ms. These measurements are local regression data,
+not service-level objectives.
+
 ## Mixed browser and simulated capacity test
 
 Phase 2C combines the real browser harness with lightweight clients in one
