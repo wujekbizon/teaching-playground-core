@@ -400,6 +400,44 @@ pnpm --dir examples/classroom-harness install
 pnpm harness:dev
 ```
 
+`harness:dev` builds the core package before starting Vite. This is required
+because the example consumes the repository through its browser-safe
+`room-connection` package entry point in `dist`, just like an installed
+application does.
+
+To run the repeatable one-teacher/ten-student browser simulation, install
+Chromium once and execute the harness test from the repository root:
+
+```bash
+pnpm --dir examples/classroom-harness exec playwright install chromium
+pnpm harness:test
+```
+
+The simulation verifies concurrent admission, participant state, chat delivery,
+hand raising, mute-all and individual mute controls, participant removal, and
+uncaught browser errors across eleven isolated browser contexts.
+
+For backend capacity validation, run the lightweight classroom simulator. It
+starts an isolated server, connects one teacher plus the requested number of
+students, and reports admission latency, fan-out latency, disconnect cleanup,
+event-loop delay, and heap growth:
+
+```bash
+pnpm load:test --students 140
+```
+
+For Phase 2C mixed validation, run eleven real browser sessions together with
+130 lightweight students in the same 141-participant room:
+
+```bash
+pnpm mixed:test
+```
+
+This explicit, resource-intensive scenario checks browser participant state,
+bidirectional chat, hand-raise and mute-all fan-out, disconnect cleanup, and
+uncaught page errors. See [`LOAD-TESTING.md`](LOAD-TESTING.md) for configuration
+and scope limitations.
+
 Open `http://localhost:5173` in two tabs, choose different names/roles, and join
 the same room. The Events panel records received and emitted classroom events to
 make negotiation and cleanup problems reproducible. For protected deployments,
@@ -462,6 +500,10 @@ connection.on('hand_raised', ({ userId, username }) => {
 ---
 
 ## API Documentation
+
+For the prioritized multi-school room catalog, reservation scheduler, harness
+UI, TURN, and horizontal-scaling work, see the
+[`Production Classroom and Scheduling Plan`](PRODUCT-IMPLEMENTATION-PLAN.md).
 
 ### TeachingPlayground Engine
 
