@@ -3,6 +3,8 @@ export interface EventConfig {
   earlyAdmissionMs?: number
   completionGraceMs?: number
   schedulerIntervalMs?: number
+  /** Minimum empty-room turnover gap required between consecutive lectures. */
+  roomTurnoverMs?: number
   [key: string]: any
 }
 

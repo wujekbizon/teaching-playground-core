@@ -10,6 +10,7 @@ export class EventManagementSystem {
   private db: PersistenceAdapter
   private commsSystem: RealTimeCommunicationSystem | null = null
   private reservationMutex = new Mutex()
+  private readonly roomTurnoverMs: number
 
   private static activeReservation(status: LectureReservation['status']): boolean {
     return status !== 'cancelled' && status !== 'completed'
@@ -43,7 +44,8 @@ export class EventManagementSystem {
     const range = EventManagementSystem.parseRange(candidate.startsAt, candidate.endsAt)
     const reservations = await this.db.find('events', { type: 'lecture', organizationId: candidate.organizationId, roomId: candidate.roomId }) as LectureReservation[]
     return reservations.find(existing => existing.id !== excludeId && EventManagementSystem.activeReservation(existing.status) &&
-      range.start < Date.parse(existing.endsAt) && range.end > Date.parse(existing.startsAt))
+      range.start < Date.parse(existing.endsAt) + this.roomTurnoverMs &&
+      range.end > Date.parse(existing.startsAt) - this.roomTurnoverMs)
   }
 
   /** Conflict check and mutation are serialized for the bundled single-process adapter. */
@@ -139,6 +141,8 @@ export class EventManagementSystem {
   constructor(private config?: EventConfig, persistence?: PersistenceAdapter) {
     // Use singleton instance of JsonDatabase
     this.db = persistence ?? JsonDatabase.getInstance()
+    this.roomTurnoverMs = config?.roomTurnoverMs ?? 15 * 60_000
+    if (this.roomTurnoverMs < 0) throw new SystemError('EVENT_VALIDATION_FAILED', 'roomTurnoverMs cannot be negative')
   }
 
   /**

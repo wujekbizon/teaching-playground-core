@@ -45,3 +45,4 @@ input, select { width: 100%; border: 1px solid #ffffff14; background: #080d1a; c
 .availability-button:not(:disabled) { border-color: #718bff55; color: #bdc9ff; background: #637ff312; }
 .availability-result { min-height: 34px; margin: 8px 0 2px; padding: 9px 10px; border-radius: 8px; background: #ffffff05; color: #7f8ba5; font-size: 10px; line-height: 1.45; }
 .availability-result.success { color: #86ddb2; background: #36c47d10; border: 1px solid #36c47d22; }
+.schedule-policy { margin: -5px 0 12px; color: #8693ad; font-size: 10px; line-height: 1.45; padding: 8px 9px; border-left: 2px solid #718bff66; background: #718bff08; }

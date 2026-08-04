@@ -65,4 +65,15 @@ describe('reservation admission enforcement', () => {
     })
     await expect(join('student-3', 'room-1', 'lecture-1')).resolves.toMatchObject({ event: 'room_state' })
   })
+
+  it('disconnects the previous cohort when the lecture room is cleared', async () => {
+    comms.registerLecture('lecture-1', 'room-1', 'open', 2)
+    await join('student-1', 'room-1')
+    const client = clients.at(-1)!
+    const disconnected = new Promise<void>(resolve => client.once('disconnect', () => resolve()))
+    comms.clearRoom('room-1')
+    await expect(disconnected).resolves.toBeUndefined()
+    expect(client.connected).toBe(false)
+    expect(comms.getRoomParticipants('room-1')).toEqual([])
+  })
 })

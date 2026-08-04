@@ -9,6 +9,7 @@ new TeachingPlayground({
     earlyAdmissionMs: 10 * 60_000,
     completionGraceMs: 5 * 60_000,
     schedulerIntervalMs: 15_000,
+    roomTurnoverMs: 15 * 60_000,
   },
 })
 ```
@@ -26,3 +27,10 @@ Capacity counts active Socket.IO participants in the claimed room. A client
 beyond the reservation capacity receives `ROOM_CAPACITY_EXCEEDED`. Before early
 admission it receives `ROOM_UNAVAILABLE`; a mismatched tenant receives
 `ORGANIZATION_MISMATCH`.
+
+The default room turnover is 15 minutes. A lecture ending at 11:00 permits the
+next lecture to start at 11:15 or later; a lecture before it must end by 09:45
+when the existing lecture starts at 10:00. Set `roomTurnoverMs` to another
+non-negative value if the host has a different cohort-change policy. When a
+lecture completes, connected participants receive `room_cleared` and the server
+disconnects their sockets so they cannot remain subscribed to the next cohort.

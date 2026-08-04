@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.6.2] - 2026-08-04
+
+### Changed
+
+- Added a configurable 15-minute default room-turnover gap between consecutive
+  lectures; reservations may be placed before or after an existing lecture when
+  that minimum gap is preserved.
+- Added the turnover policy to availability searches and conflict responses so
+  the schedule form only offers rooms that have enough cohort-change time.
+
+### Fixed
+
+- Disconnect the previous cohort when a lecture completes or its room is
+  cleared, preventing old sockets from receiving the next lecture's events.
+- Added automated coverage for short-turnover rejection, valid before/after
+  scheduling, self-excluding reschedule searches, and completed-room eviction.
+
 ## [2.6.1] - 2026-08-04
 
 ### Fixed

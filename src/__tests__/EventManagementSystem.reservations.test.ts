@@ -41,9 +41,15 @@ describe('EventManagementSystem reservation scheduling', () => {
     system = new EventManagementSystem(undefined, persistence)
   })
 
-  it('allows adjacent reservations and rejects overlaps with conflict details', async () => {
+  it('allows reservations after the turnover gap and rejects overlaps or short turnover', async () => {
     const first = await system.scheduleReservation(base)
-    await expect(system.scheduleReservation({ ...base, name: 'Geometry', startsAt: base.endsAt,
+    await expect(system.scheduleReservation({ ...base, name: 'Too close before', startsAt: '2026-09-01T09:00:00.000Z',
+      endsAt: '2026-09-01T09:50:00.000Z' })).rejects.toMatchObject({ code: 'RESERVATION_CONFLICT' })
+    await expect(system.scheduleReservation({ ...base, name: 'Before lecture', startsAt: '2026-09-01T09:00:00.000Z',
+      endsAt: '2026-09-01T09:45:00.000Z' })).resolves.toMatchObject({ status: 'scheduled' })
+    await expect(system.scheduleReservation({ ...base, name: 'Short turnover', startsAt: '2026-09-01T11:10:00.000Z',
+      endsAt: '2026-09-01T12:00:00.000Z' })).rejects.toMatchObject({ code: 'RESERVATION_CONFLICT' })
+    await expect(system.scheduleReservation({ ...base, name: 'Geometry', startsAt: '2026-09-01T11:15:00.000Z',
       endsAt: '2026-09-01T12:00:00.000Z' })).resolves.toMatchObject({ status: 'scheduled' })
     await expect(system.scheduleReservation({ ...base, name: 'Conflict', startsAt: '2026-09-01T10:30:00.000Z',
       endsAt: '2026-09-01T11:30:00.000Z' })).rejects.toMatchObject({
@@ -70,8 +76,8 @@ describe('EventManagementSystem reservation scheduling', () => {
 
   it('scopes range queries and availability to an organization', async () => {
     const existing = await system.scheduleReservation(base)
-    await system.scheduleReservation({ ...base, roomId: 'room-b', capacity: 5, startsAt: base.endsAt,
-      endsAt: '2026-09-01T12:00:00.000Z' })
+    await system.scheduleReservation({ ...base, roomId: 'room-b', capacity: 5, startsAt: '2026-09-01T11:15:00.000Z',
+      endsAt: '2026-09-01T12:15:00.000Z' })
     await expect(system.listReservations({ organizationId: 'school-a', from: '2026-09-01T09:30:00.000Z',
       to: '2026-09-01T10:30:00.000Z' })).resolves.toHaveLength(1)
     const rooms = await system.getRoomAvailability({ organizationId: 'school-a', startsAt: base.startsAt,

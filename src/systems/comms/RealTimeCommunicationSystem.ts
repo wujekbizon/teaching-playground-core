@@ -749,6 +749,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
 
       // Clear participants from memory
       const participantCount = this.rooms.get(roomId)?.size || 0
+      const participantSocketIds = [...(this.rooms.get(roomId)?.keys() ?? [])]
       this.rooms.delete(roomId)
 
       // Clear message history from memory
@@ -770,6 +771,11 @@ export class RealTimeCommunicationSystem extends EventEmitter {
           reason: 'Lecture ended',
           timestamp: new Date().toISOString()
         })
+        // A cleared lecture must not remain subscribed to the Socket.IO room;
+        // otherwise the old cohort could receive events from the next lecture.
+        for (const socketId of participantSocketIds) {
+          this.io.sockets?.sockets?.get(socketId)?.disconnect(true)
+        }
       }
 
       console.log(`✓ Room ${roomId} cleared successfully:`, {
