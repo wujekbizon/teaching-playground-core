@@ -417,6 +417,15 @@ The simulation verifies concurrent admission, participant state, chat delivery,
 hand raising, mute-all and individual mute controls, participant removal, and
 uncaught browser errors across eleven isolated browser contexts.
 
+For backend capacity validation, run the lightweight classroom simulator. It
+starts an isolated server, connects one teacher plus the requested number of
+students, and reports admission latency, fan-out latency, disconnect cleanup,
+event-loop delay, and heap growth:
+
+```bash
+pnpm load:test --students 140
+```
+
 Open `http://localhost:5173` in two tabs, choose different names/roles, and join
 the same room. The Events panel records received and emitted classroom events to
 make negotiation and cleanup problems reproducible. For protected deployments,
