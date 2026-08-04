@@ -3,7 +3,7 @@ import { RealTimeCommunicationSystem } from '../systems/comms/RealTimeCommunicat
 import { DataManagementSystem } from '../systems/data/DataManagementSystem'
 import { EventManagementSystem } from '../systems/event/EventManagementSystem'
 import { RoomManagementSystem } from '../systems/room/RoomManagementSystem'
-import { Lecture } from '../interfaces/event.interface'
+import { Lecture, LectureReservation, ReservationFilter } from '../interfaces/event.interface'
 import { SystemError } from '../interfaces'
 import { User, TeacherProfile } from '../interfaces/user.interface'
 import { RoomFeatures } from '../interfaces/room.interface'
@@ -38,6 +38,7 @@ export default class TeachingPlayground {
     async createClassroom(options: { name: string; capacity: number; features?: Partial<RoomFeatures> }) {
       const room = await this.roomSystem.createRoom({
         name: options.name,
+        organizationId: this.currentUser?.organizationId,
         capacity: options.capacity,
         features: options.features || {
           hasVideo: true,
@@ -62,6 +63,59 @@ export default class TeachingPlayground {
         `User ${user.username} is not authorized to ${action}. Required role: teacher or admin`
       )
     }
+  }
+
+  private requireOrganization(): string {
+    this.ensureUserAuthorized(this.currentUser, 'manage reservations')
+    if (!this.currentUser.organizationId) {
+      throw new SystemError('FORBIDDEN', 'A trusted organizationId is required for reservation operations')
+    }
+    return this.currentUser.organizationId
+  }
+
+  async createRoom(options: { name: string; capacity: number; features?: Partial<RoomFeatures> }) {
+    const room = await this.roomSystem.createRoom({ ...options, organizationId: this.requireOrganization() })
+    this.commsSystem.setupForRoom(room.id)
+    return room
+  }
+
+  async listRooms(options: { status?: 'available' | 'occupied' | 'scheduled' | 'maintenance' } = {}) {
+    return this.roomSystem.listRooms({ ...options, organizationId: this.requireOrganization() })
+  }
+
+  async scheduleReservation(options: {
+    roomId: string; name: string; startsAt: string; endsAt: string; timezone: string;
+    capacity: number; description?: string
+  }): Promise<LectureReservation> {
+    const organizationId = this.requireOrganization()
+    return this.eventSystem.scheduleReservation({
+      ...options,
+      organizationId,
+      teacherId: this.currentUser!.id,
+      createdBy: this.currentUser!.username,
+    })
+  }
+
+  async listReservations(filter: Omit<ReservationFilter, 'organizationId'> = {}): Promise<LectureReservation[]> {
+    return this.eventSystem.listReservations({ ...filter, organizationId: this.requireOrganization() })
+  }
+
+  async getRoomAvailability(options: { startsAt: string; endsAt: string; capacity?: number }) {
+    return this.eventSystem.getRoomAvailability({ ...options, organizationId: this.requireOrganization() })
+  }
+
+  async rescheduleLecture(lectureId: string, updates: { roomId?: string; startsAt?: string; endsAt: string }) {
+    return this.eventSystem.rescheduleReservation(lectureId, this.requireOrganization(), updates)
+  }
+
+  async updateReservation(lectureId: string, updates: {
+    name?: string; description?: string; teacherId?: string; capacity?: number; timezone?: string
+  }) {
+    return this.eventSystem.updateReservation(lectureId, this.requireOrganization(), updates)
+  }
+
+  async cancelReservation(lectureId: string, reason?: string) {
+    return this.eventSystem.cancelReservation(lectureId, this.requireOrganization(), reason)
   }
 
   // Enhanced Event Management

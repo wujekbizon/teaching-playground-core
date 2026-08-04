@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.4.0] - 2026-08-04
+
+### Added
+
+- Added Phase 2D.1 organization-scoped rooms and reservation-backed lectures
+  with explicit start/end timestamps, timezone, and reservation capacity.
+- Added availability and date-range queries, conflict-safe scheduling and
+  rescheduling, cancellation, and typed scheduling error contracts.
+- Added concurrent overlap, adjacent interval, capacity, tenant isolation,
+  range query, availability, rescheduling, and cancellation tests.
+
+### Changed
+
+- Future reservations no longer update or depend on `Room.currentLecture`;
+  that field remains available only for the legacy live-lecture lifecycle.
+- Added trusted `organizationId` support to users so public reservation and
+  room operations derive their tenant scope from the current identity.
+
+### Migration
+
+- Added `MIGRATION-v2.4.md` with compatibility and legacy-record guidance.
+
 ## [2.3.0] - 2026-08-04
 
 ### Added
