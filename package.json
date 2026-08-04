@@ -1,6 +1,6 @@
 {
   "name": "@teaching-playground/core",
-  "version": "2.1.1",
+  "version": "2.2.1",
   "description": "A production-ready WebSocket and WebRTC virtual classroom system for real-time online education with video streaming, chat, and lecture management",
   "keywords": [
     "education",
@@ -21,6 +21,20 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./room-connection": {
+      "types": "./dist/services/RoomConnection.d.ts",
+      "import": "./dist/services/RoomConnection.js"
+    },
+    "./user": {
+      "types": "./dist/interfaces/user.interface.d.ts",
+      "import": "./dist/interfaces/user.interface.js"
+    }
+  },
   "files": [
     "dist",
     "README.md",
@@ -42,11 +56,16 @@
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "test": "jest",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src scripts --ext .ts",
     "server": "tsx src/server.ts",
     "server:dev": "tsx watch src/server.ts",
+    "preharness:dev": "pnpm build",
     "harness:dev": "pnpm --dir examples/classroom-harness dev",
+    "preharness:build": "pnpm build",
     "harness:build": "pnpm --dir examples/classroom-harness build",
+    "harness:test": "pnpm --dir examples/classroom-harness test:e2e",
+    "mixed:test": "pnpm --dir examples/classroom-harness test:mixed",
+    "load:test": "tsx scripts/classroom-load-test.ts",
     "test:package": "./scripts/test-package.sh",
     "test:integration": "./scripts/test-in-project.sh",
     "prepack": "npm run build",

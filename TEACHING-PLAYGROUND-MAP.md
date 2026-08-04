@@ -295,8 +295,8 @@ StreamState { isActive, streamerId, quality: 'low'|'medium'|'high' }
 
 1. **This backend was already tested against wolfmed in production** (per CHANGELOG v1.4.6) — the v1.4.6 room-lifecycle-gating fix exists specifically because of bugs found in that integration (users re-entering ended lectures). Check whether wolfmed-edu already has a partial integration/branch to reconcile with, rather than starting clean.
 2. **Own the `RealTimeCommunicationSystem` instance carefully.** As noted in §4.2, several classes construct their own internal instance. Only one instance should ever call `.initialize(httpServer)`. The cleanest integration is likely: construct one `RealTimeCommunicationSystem`, `.initialize()` it against wolfmed's HTTP server (or a dedicated WS port), and pass that same instance everywhere state needs to be shared — which today requires either using `TeachingPlayground`'s wiring as-is, or restructuring these systems to accept an injected comms instance in all constructors (currently only `EventManagementSystem.setCommsSystem()` supports late injection).
-3. **Persistence layer (`JsonDatabase`) is dev-grade.** Single flat JSON file, mutex-serialized, singleton — fine for a demo, not for wolfmed's real multi-user production load or multi-instance deployment. Plan to replace it with wolfmed's real DB (swap inside `RoomManagementSystem`/`EventManagementSystem`, keep their public method signatures) before relying on this in production, or accept eventual data loss/corruption risk under concurrent load across restarts.
-4. **Ephemeral state is single-process/in-memory.** If wolfmed-edu deploys the WS server across multiple instances/pods, participants/chat/stream state won't be shared between instances unless a Socket.IO adapter (e.g. Redis adapter) is added — not present today. Horizontal scaling is a gap to solve before that becomes a requirement.
+3. **The default persistence layer (`JsonDatabase`) is dev-grade.** It uses a single flat JSON file and a process-local mutex. Hosts can provide a real backend through `TeachingPlaygroundConfig.persistence`, but this repository does not ship or production-validate a SQL/managed-database adapter. Use wolfmed's production adapter before relying on persistence under multi-instance load.
+4. **Multi-instance delivery is configurable, but full horizontal scaling is unproven.** Hosts can inject a Socket.IO-compatible adapter through `commsConfig.socketAdapter`, so broadcasts can span processes. That does not make the package's process-local participant/chat/stream state shared or consistent. Validate shared state and cross-instance lifecycle behavior before deploying multiple instances/pods.
 5. **`EventManagementSystem.updateEventStatus()` is the linchpin call** for lecture start/end — it's what keeps DB status, room status, and the WebSocket room-availability gate in sync. Any custom lecture-scheduling UI in wolfmed-edu should call through this, not mutate `Lecture.status` directly via `updateEvent`.
 6. **Never call the deprecated `RoomManagementSystem` participant methods** (`addParticipant`, `removeParticipant`, `updateParticipantStreamingStatus`, `clearParticipants`) — they throw by design. Participants only flow through WebSocket `join_room`/`leave_room`.
 7. **The SDK uses one current WebRTC signaling contract** (`webrtc:offer`,
@@ -305,7 +305,11 @@ StreamState { isActive, streamerId, quality: 'low'|'medium'|'high' }
 8. **Production deployments still need host-provided TURN credentials.** Pass a
    complete `RTCConfiguration` through `RoomConnectionOptions.rtcConfiguration`;
    the package must not embed shared production TURN secrets.
-9. **`DataManagementSystem` and several `TeachingPlayground` lifecycle methods (`saveState`, `loadState`, `restartSystem`, `shutdown`, `initialize`) are no-op stubs.** Don't assume calling them does anything beyond logging.
+9. **`DataManagementSystem` remains placeholder-only.** Its data, backup,
+   restore, and statistics operations do not provide real storage behavior.
+   `TeachingPlayground.saveState()`, `loadState()`, and `restartSystem()` now
+   fail explicitly as unsupported; `initialize(server)` and `shutdown()` are
+   functional lifecycle methods and must not be described as no-ops.
 10. **`ErrorCode` type is non-exhaustive** — match on `error.code` (string) defensively in wolfmed-edu's error handling rather than relying on the exported union type.
 11. Frontend requirements explicitly called out in CHANGELOG v1.4.6 that wolfmed-edu's app layer must implement: handle `join_room_error` (redirect/show message), implement the mute event handlers, and fix kicked-user video cleanup client-side.
 12. Consult `WEBSOCKET-FLOW.md` in this repo for full sequence diagrams of every flow (join, second-user-joins, WebRTC negotiation, disconnect, room lifecycle state machine, event quick-reference tables) — it's written exactly for the kind of "how do I plug my frontend in" question wolfmed-edu will face.
@@ -327,13 +331,36 @@ StreamState { isActive, streamerId, quality: 'low'|'medium'|'high' }
 
 ---
 
-## 9. Open Gaps / Things Not Yet Implemented (be aware before promising these to stakeholders)
+## 9. Capability Status and Open Gaps (check before promising these to stakeholders)
 
-- Breakout rooms (planned v1.5.0, design exists in `IMPLEMENTATION-PLAN.md`/`ROADMAP-NEXT.md`, no code yet).
-- Waiting rooms, advanced permissions, polling, reactions, focus mode, attendance tracking, closed captions — all roadmap-only, no implementation.
-- TURN server support (env vars documented, not read/used in code).
-- Cloud upload of recordings — recordings are handed to the host app as a `Blob`; no upload/storage integration exists.
-- Horizontal scaling / multi-instance Socket.IO adapter — not present.
-- Real database backend — currently flat-file JSON only.
-- `DataManagementSystem` — fully stubbed, no real backup/restore/stats.
-- `TeachingPlayground.getSystemStatus()` — always reports `'healthy'`, not a real health check.
+“Host-provided” means the package exposes an integration point; it does **not**
+mean this repository supplies or operates the external infrastructure.
+
+| Capability | Status | Current boundary / remaining gap |
+|---|---|---|
+| Breakout rooms | **Not implemented** | Planned for v1.5.0; designs exist in `IMPLEMENTATION-PLAN.md` and `ROADMAP-NEXT.md`, but there is no runtime implementation. |
+| Waiting rooms, advanced permissions, polling, reactions, focus mode, attendance tracking, closed captions | **Not implemented** | Roadmap-only. |
+| STUN/TURN configuration | **Host-provided; not production-validated** | `RoomConnectionOptions.rtcConfiguration` is passed to `RTCPeerConnection`, so a host can supply `iceServers`, including TURN. The package does not read TURN environment variables into browser configuration, operate a TURN service, issue short-lived credentials, or include relay-only integration tests. |
+| Recording storage | **Partially implemented** | Client-side recording produces a `Blob`; cloud upload, durable storage, retention, access control, and server-composed classroom recording are not implemented. |
+| Multi-instance Socket.IO delivery | **Host-provided; not production-validated** | `commsConfig.socketAdapter` accepts a Socket.IO-compatible adapter. Process-local participant/chat/stream state is not made shared by that adapter, and no multi-node correctness/failover test exists. |
+| Database persistence | **Host-provided; default is development-only** | `TeachingPlaygroundConfig.persistence` accepts a `PersistenceAdapter`; the bundled default is flat-file JSON. No production database adapter is shipped or integration-tested here. |
+| `DataManagementSystem` | **Not implemented** | Backup, restore, query, and statistics methods remain placeholders and do not provide real data-management behavior. |
+| `TeachingPlayground.getSystemStatus()` | **Partially implemented** | Communication initialization and the unavailable data system are reflected, but room/event health is static. The method does not check persistence, adapter/Redis, TURN, event-loop delay, memory pressure, or other external dependencies. |
+
+### Production-readiness priorities
+
+1. Validate the current single-instance classroom at the target 100–140-user
+   load, including media topology, event latency, cleanup, CPU, and memory.
+2. Configure a real TURN service from the host application and test relay-only
+   connectivity with short-lived credentials across real network boundaries.
+3. If multiple backend instances are required, add shared authoritative room
+   state and prove cross-instance admission, messaging, moderation, disconnect,
+   restart, and failover behavior; a Socket.IO adapter alone is insufficient.
+4. Implement and integration-test the production `PersistenceAdapter` used by
+   the host application, including concurrency, restart, and failure behavior.
+5. Define the required recording product (local teacher media, screen plus
+   teacher, composed classroom, or separate tracks) before designing storage.
+6. Replace or remove the `DataManagementSystem` placeholders, and expand health
+   reporting into meaningful liveness/readiness checks before operational use.
+7. Prioritize roadmap features only after the capacity and infrastructure risks
+   above are measured and addressed.

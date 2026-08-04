@@ -141,8 +141,9 @@ node -e "console.log(require('@teaching-playground/core'))"
 
 ### Required Release Tracking
 
-Every substantial completed task must add a dated entry to `CHANGELOG.md` and
-select a Semantic Versioning increment before the change is merged:
+Every pull request must add a dated entry to `CHANGELOG.md` and select a
+Semantic Versioning increment before the change is merged, including
+documentation-only and test-infrastructure pull requests:
 
 1. Record user-visible additions, changes, fixes, security work, deprecations,
    and breaking migration steps under the new version.
