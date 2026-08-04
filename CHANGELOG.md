@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.6.0] - 2026-08-04
+
+### Added
+
+- Added the Phase 2D.3 idempotent reservation scheduler with configurable
+  early-admission, completion-grace, and polling intervals.
+- Added restart recovery from persisted reservations and deterministic room
+  claiming when adjacent reservations meet during a grace period.
+- Added reservation-aware WebSocket admission with lifecycle, organization,
+  reservation identity, and capacity enforcement.
+- Added focused scheduler boundary, duplicate-run, restart, adjacent-room-claim,
+  early-admission, tenant, identity, and capacity tests.
+
+### Changed
+
+- The development server now shares one `TeachingPlayground` communication
+  system between reservation scheduling and live Socket.IO admission.
+- The live harness can carry an eligible reservation identity into
+  `RoomConnection`; direct room IDs remain available as a diagnostic mode.
+
 ## [2.5.0] - 2026-08-04
 
 ### Added

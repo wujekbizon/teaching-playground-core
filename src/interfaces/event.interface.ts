@@ -1,5 +1,8 @@
 export interface EventConfig {
   timezone?: string
+  earlyAdmissionMs?: number
+  completionGraceMs?: number
+  schedulerIntervalMs?: number
   [key: string]: any
 }
 

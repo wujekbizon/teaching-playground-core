@@ -7,12 +7,15 @@ import { Lecture, LectureReservation, ReservationFilter } from '../interfaces/ev
 import { SystemError } from '../interfaces'
 import { User, TeacherProfile } from '../interfaces/user.interface'
 import { RoomFeatures } from '../interfaces/room.interface'
+import { ReservationScheduler, SchedulerRunReport } from '../systems/event/ReservationScheduler'
+import { JsonDatabase } from '../utils/JsonDatabase'
 
 export default class TeachingPlayground {
   public roomSystem: RoomManagementSystem
   private commsSystem: RealTimeCommunicationSystem
   private eventSystem: EventManagementSystem
   private dataSystem: DataManagementSystem
+  private scheduler: ReservationScheduler
   private currentUser: User | null = null
   private initialized = false
 
@@ -21,6 +24,7 @@ export default class TeachingPlayground {
     this.roomSystem = new RoomManagementSystem(config.roomConfig, this.commsSystem, config.persistence)
     this.eventSystem = new EventManagementSystem(config.eventConfig, config.persistence)
     this.dataSystem = new DataManagementSystem(config.dataConfig)
+    this.scheduler = new ReservationScheduler(config.persistence ?? JsonDatabase.getInstance(), this.commsSystem, config.eventConfig)
 
     // Inject commsSystem into eventSystem for room cleanup (v1.1.3 feature)
     this.eventSystem.setCommsSystem(this.commsSystem)
@@ -296,6 +300,7 @@ export default class TeachingPlayground {
 
   // Lifecycle
   async shutdown(): Promise<void> {
+    this.scheduler.stop()
     await this.commsSystem.shutdown()
     this.initialized = false
   }
@@ -305,6 +310,11 @@ export default class TeachingPlayground {
       throw new SystemError('ALREADY_INITIALIZED', 'Teaching Playground is already initialized')
     }
     this.commsSystem.initialize(server)
+    this.scheduler.start()
     this.initialized = true
+  }
+
+  runSchedulerOnce(): Promise<SchedulerRunReport> {
+    return this.scheduler.runOnce()
   }
 }

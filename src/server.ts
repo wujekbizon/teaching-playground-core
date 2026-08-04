@@ -27,6 +27,7 @@ function resolveDevelopmentIdentity(token: unknown): User | null {
     id: `dev-${role}-${identity}`,
     username: identity,
     displayName: identity,
+    organizationId: 'school-demo',
     role,
     status: 'online'
   }
@@ -99,7 +100,9 @@ export async function startWebSocketServer(port: number = 3001) {
       throw new Error('DEV_AUTH_ENABLED cannot be used in production')
     }
 
-    const scheduling = developmentAuth ? new TeachingPlayground({}) : null
+    const scheduling = developmentAuth ? new TeachingPlayground({ commsConfig: {
+      allowedOrigins: getAllowedOrigins(), requireAuthentication: true, identityProvider: ({ auth }) => resolveDevelopmentIdentity(auth.token),
+    } }) : null
     scheduling?.setCurrentUser({ id: 'dev-admin', organizationId: 'school-demo',
       username: 'Harness administrator', displayName: 'Harness administrator', role: 'admin', status: 'online' })
     const server = createServer((req, res) => {
@@ -152,15 +155,9 @@ export async function startWebSocketServer(port: number = 3001) {
       })
     })
 
-    const commsSystem = new RealTimeCommunicationSystem({
-      allowedOrigins: getAllowedOrigins(),
-      requireAuthentication: developmentAuth,
-      identityProvider: developmentAuth
-        ? ({ auth }) => resolveDevelopmentIdentity(auth.token)
-        : undefined
-    })
-    
-    commsSystem.initialize(server)
+    const commsSystem = scheduling ? null : new RealTimeCommunicationSystem({ allowedOrigins: getAllowedOrigins() })
+    if (scheduling) scheduling.initialize(server)
+    else commsSystem!.initialize(server)
 
     server.listen(port, () => {
       console.log(`WebSocket server is running on port ${port}`)
@@ -172,7 +169,8 @@ export async function startWebSocketServer(port: number = 3001) {
     // Handle graceful shutdown
     const shutdown = async (signal: string) => {
       console.log(`${signal} received. Shutting down gracefully...`)
-      await commsSystem.shutdown()
+      if (scheduling) await scheduling.shutdown()
+      else await commsSystem!.shutdown()
       if (server.listening) {
         await new Promise<void>((resolve, reject) => {
           server.close(error => error ? reject(error) : resolve())

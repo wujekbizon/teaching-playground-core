@@ -13,6 +13,10 @@ and are refused in production mode.
 Rooms supports catalog refresh, capacity filtering, creation, and maintenance.
 Schedule supports persistent reservation listing, availability search with UTC
 payloads, scheduling, rescheduling, conflict feedback, and cancellation.
+The development scheduler automatically opens reservations before their start,
+marks them in progress at the start, and completes them after the configured
+grace period. Eligible reservations expose a **Join live** action that carries
+the reservation identity into WebSocket admission.
 
 ## Run
 

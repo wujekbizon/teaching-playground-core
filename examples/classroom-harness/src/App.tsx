@@ -36,6 +36,8 @@ export default function App() {
   const [view, setView] = useState<'rooms' | 'schedule' | 'live'>('live')
   const [serverUrl, setServerUrl] = useState('http://localhost:3001')
   const [roomId, setRoomId] = useState('clinical-skills-101')
+  const [reservationId, setReservationId] = useState<string | undefined>()
+  const [reservationLabel, setReservationLabel] = useState<string | undefined>()
   const [token, setToken] = useState('teacher:Dr. Maya Chen')
   const [syncDevelopmentToken, setSyncDevelopmentToken] = useState(true)
   const [name, setName] = useState('Dr. Maya Chen')
@@ -113,7 +115,7 @@ export default function App() {
     if (connectionRef.current) return
     try {
       const stream = withMedia ? await ensureMedia() : null
-      const connection = new RoomConnection(roomId, user, serverUrl, { auth: { token } })
+      const connection = new RoomConnection(roomId, user, serverUrl, { auth: { token }, reservationId })
       connectionRef.current = connection
 
       eventNames.forEach(event => connection.on(event, (payload: unknown) => addLog('in', event, payload)))
@@ -277,7 +279,9 @@ export default function App() {
 
   const participantCount = Math.max(participants.length, connected ? 1 : 0)
 
-  if (view !== 'live') return <ManagementViews view={view} setView={setView} serverUrl={serverUrl} />
+  if (view !== 'live') return <ManagementViews view={view} setView={setView} serverUrl={serverUrl} onJoinReservation={reservation => {
+    setRoomId(reservation.roomId); setReservationId(reservation.id); setReservationLabel(`${reservation.name} · ${reservation.status}`); setView('live')
+  }} />
 
   return <div className="app-shell">
     {notice && <div className={`notice ${notice.tone}`} role="status">{notice.text}<button onClick={() => setNotice(null)}>×</button></div>}
@@ -296,6 +300,7 @@ export default function App() {
         <p>Test authenticated media and classroom events using the public package API.</p>
         <label>Server URL<input value={serverUrl} onChange={event => setServerUrl(event.target.value)} disabled={connected} /></label>
         <label>Room ID<input value={roomId} onChange={event => setRoomId(event.target.value)} disabled={connected} /></label>
+        {reservationLabel && <div className="auth-hint">Reservation: <code>{reservationLabel}</code><button type="button" disabled={connected} onClick={() => { setReservationId(undefined); setReservationLabel(undefined) }}>Use diagnostic room ID</button></div>}
         <label>Display name<input value={name} onChange={event => {
           const nextName = event.target.value
           setName(nextName)

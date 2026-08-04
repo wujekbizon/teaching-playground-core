@@ -12,6 +12,7 @@ export * from './systems/comms/RealTimeCommunicationSystem'
 
 // Export systems
 export * from './systems/event/EventManagementSystem'
+export * from './systems/event/ReservationScheduler'
 
 // Export utils
 export * from './utils/JsonDatabase'
