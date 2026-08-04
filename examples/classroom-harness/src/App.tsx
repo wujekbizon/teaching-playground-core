@@ -34,7 +34,8 @@ const stringify = (value: unknown) => {
 export default function App() {
   const [serverUrl, setServerUrl] = useState('http://localhost:3001')
   const [roomId, setRoomId] = useState('clinical-skills-101')
-  const [token, setToken] = useState('teacher:maya')
+  const [token, setToken] = useState('teacher:Dr. Maya Chen')
+  const [syncDevelopmentToken, setSyncDevelopmentToken] = useState(true)
   const [name, setName] = useState('Dr. Maya Chen')
   const [role, setRole] = useState<User['role']>('teacher')
   const [connected, setConnected] = useState(false)
@@ -183,8 +184,16 @@ export default function App() {
   }
 
   const resetSession = () => {
-    connectionRef.current?.disconnect()
+    const connection = connectionRef.current
+    if (connection?.isScreenSharing()) connection.stopScreenShare()
+    if (connection?.isRecording()) {
+      try { connection.stopRecording() } catch { /* connection cleanup continues */ }
+    }
+    connection?.disconnect()
     connectionRef.current = null
+    localStreamRef.current?.getTracks().forEach(track => track.stop())
+    localStreamRef.current = null
+    setLocalStream(null)
     setConnected(false)
     setLocalSocketId(null)
     setParticipants([])
@@ -193,6 +202,8 @@ export default function App() {
     setSharing(false)
     setRecording(false)
     setHandRaised(false)
+    setMicOn(true)
+    setCameraOn(true)
   }
 
   const forceMute = (text: string) => {
@@ -262,6 +273,8 @@ export default function App() {
     setMessage('')
   }
 
+  const participantCount = Math.max(participants.length, connected ? 1 : 0)
+
   return <div className="app-shell">
     {notice && <div className={`notice ${notice.tone}`} role="status">{notice.text}<button onClick={() => setNotice(null)}>×</button></div>}
     <header className="topbar">
@@ -278,18 +291,27 @@ export default function App() {
         <p>Test authenticated media and classroom events using the public package API.</p>
         <label>Server URL<input value={serverUrl} onChange={event => setServerUrl(event.target.value)} disabled={connected} /></label>
         <label>Room ID<input value={roomId} onChange={event => setRoomId(event.target.value)} disabled={connected} /></label>
-        <label>Display name<input value={name} onChange={event => setName(event.target.value)} disabled={connected} /></label>
+        <label>Display name<input value={name} onChange={event => {
+          const nextName = event.target.value
+          setName(nextName)
+          if (syncDevelopmentToken) setToken(`${role}:${nextName}`)
+        }} disabled={connected} /></label>
         <div className="field-row">
-          <label>Role<select value={role} onChange={event => setRole(event.target.value as User['role'])} disabled={connected}><option value="teacher">Teacher</option><option value="student">Student</option><option value="admin">Admin</option></select></label>
-          <label>Auth token<input value={token} onChange={event => setToken(event.target.value)} type="password" disabled={connected} /></label>
+          <label>Role<select value={role} onChange={event => {
+            const nextRole = event.target.value as User['role']
+            setRole(nextRole)
+            if (syncDevelopmentToken) setToken(`${nextRole}:${name}`)
+          }} disabled={connected}><option value="teacher">Teacher</option><option value="student">Student</option><option value="admin">Admin</option></select></label>
+          <label>Auth token<input value={token} onChange={event => { setToken(event.target.value); setSyncDevelopmentToken(false) }} type="password" disabled={connected} /></label>
         </div>
+        <div className="auth-hint">The development server trusts the <code>role:name</code> token as the participant identity.<button type="button" disabled={connected} onClick={() => { setToken(`${role}:${name}`); setSyncDevelopmentToken(true) }}>Use display name</button></div>
         <button className={`primary ${connected ? 'danger' : ''}`} onClick={() => connected ? disconnect() : void connect(true)}>{connected ? 'Leave classroom' : 'Join with camera'}</button>
         {!connected && <button className="secondary" onClick={() => void connect(false)}>Join without media</button>}
         <div className="setup-note"><span>i</span><p>Open a second tab with another role to test peer media and participant controls.</p></div>
       </aside>
 
       <section className="stage">
-        <div className="stage-heading"><div><span className="eyebrow">Clinical skills · Live lab</span><h2>Patient communication workshop</h2></div><span className="participant-count">{Math.max(participants.length, connected ? 1 : 0)} participants</span></div>
+        <div className="stage-heading"><div><span className="eyebrow">Clinical skills · Live lab</span><h2>Patient communication workshop</h2></div><span className="participant-count">{participantCount} {participantCount === 1 ? 'participant' : 'participants'}</span></div>
         <div className="video-grid">
           <article className="video-card local"><video ref={localVideoRef} autoPlay muted playsInline /><div className="video-placeholder"><div className="large-avatar">{name.split(' ').map(part => part[0]).slice(0, 2).join('')}</div><span>{cameraOn && localStream ? 'Camera preview' : 'Camera is off'}</span></div><div className="video-label"><span>{name} <em>You</em></span><span>{micOn ? 'Mic on' : 'Muted'}</span></div></article>
           {[...remoteStreams.entries()].map(([peerId, stream]) => <RemoteVideo key={peerId} peerId={peerId} stream={stream} participant={participants.find(item => item.socketId === peerId)} />)}

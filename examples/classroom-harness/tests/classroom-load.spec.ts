@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { stat } from 'node:fs/promises'
 
 type ClassroomUser = {
   context: BrowserContext
@@ -7,6 +8,14 @@ type ClassroomUser = {
 }
 
 const studentCount = 10
+
+test('development token follows the selected role and display name', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.getByLabel('Display name').fill('Greg')
+  await page.getByLabel('Role').selectOption('student')
+  await expect(page.getByLabel('Auth token')).toHaveValue('student:Greg')
+  await page.screenshot({ path: testInfo.outputPath('greg-development-identity.png'), fullPage: true })
+})
 
 async function joinClassroom(
   page: Page,
@@ -116,15 +125,30 @@ test('a late student receives chat history and subsequent messages', async ({ br
   }
 })
 
-test('teacher and student receive each other media', async ({ browser }) => {
+test('teacher and student receive each other media', async ({ browser }, testInfo) => {
   const errors: string[] = []
   const teacherContext = await browser.newContext({ permissions: ['camera', 'microphone'] })
+  await teacherContext.addInitScript(() => {
+    Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
+      configurable: true,
+      value: async () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = 640
+        canvas.height = 360
+        const context = canvas.getContext('2d')
+        context?.fillRect(0, 0, canvas.width, canvas.height)
+        ;(window as typeof window & { testDisplayCanvas?: HTMLCanvasElement }).testDisplayCanvas = canvas
+        return canvas.captureStream(10)
+      },
+    })
+  })
   const studentContext = await browser.newContext({ permissions: ['camera', 'microphone'] })
   const teacher = await teacherContext.newPage()
   const student = await studentContext.newPage()
   teacher.on('pageerror', error => errors.push(`teacher: ${error.message}`))
   student.on('pageerror', error => errors.push(`student: ${error.message}`))
   const roomId = `media-${Date.now()}`
+  let teacherClosed = false
 
   try {
     await joinClassroom(teacher, 'teacher', 'media-teacher', roomId, true)
@@ -140,9 +164,51 @@ test('teacher and student receive each other media', async ({ browser }) => {
     await expect.poll(() => student.locator('.video-card:not(.local):not(.empty) video').evaluateAll(
       videos => videos.every(video => (video as HTMLVideoElement).srcObject instanceof MediaStream),
     )).toBe(true)
+
+    await teacher.locator('.media-bar button').filter({ hasText: 'Mute' }).click()
+    await expect(teacher.locator('.media-bar button').filter({ hasText: 'Unmute' })).toBeVisible()
+    await expect.poll(() => teacher.locator('.video-card.local video').evaluate(video =>
+      ((video as HTMLVideoElement).srcObject as MediaStream).getAudioTracks()[0]?.enabled)).toBe(false)
+    await teacher.locator('.media-bar button').filter({ hasText: 'Unmute' }).click()
+
+    await teacher.getByRole('button', { name: 'Camera' }).click()
+    await expect(teacher.getByRole('button', { name: 'Start camera' })).toBeVisible()
+    await expect.poll(() => teacher.locator('.video-card.local video').evaluate(video =>
+      ((video as HTMLVideoElement).srcObject as MediaStream).getVideoTracks()[0]?.enabled)).toBe(false)
+    await teacher.getByRole('button', { name: 'Start camera' }).click()
+
+    await teacher.getByRole('button', { name: 'Share screen' }).click()
+    await expect(teacher.getByRole('button', { name: 'Stop sharing' })).toBeVisible()
+    await teacher.getByRole('button', { name: 'Stop sharing' }).click()
+    await expect(teacher.getByRole('button', { name: 'Share screen' })).toBeVisible()
+
+    await teacher.getByRole('button', { name: 'Record' }).click()
+    await expect(teacher.getByRole('button', { name: /Stop ·/ })).toBeVisible()
+    await teacher.waitForTimeout(1_200)
+    const downloadPromise = teacher.waitForEvent('download')
+    await teacher.getByRole('button', { name: /Stop ·/ }).click()
+    const download = await downloadPromise
+    const recordingPath = testInfo.outputPath('classroom-recording.webm')
+    await download.saveAs(recordingPath)
+    expect(download.suggestedFilename()).toMatch(/\.webm$/)
+    expect((await stat(recordingPath)).size).toBeGreaterThan(0)
     expect(errors).toEqual([])
-  } finally {
+
+    await teacher.getByRole('button', { name: 'Leave classroom' }).click()
+    await expect(student.getByText('1 participant', { exact: true })).toBeVisible()
+    await expect(student.locator('.video-card:not(.local):not(.empty) video')).toHaveCount(0)
+
+    await teacher.getByRole('button', { name: 'Join with camera' }).click()
+    await expect(teacher.getByText('Live session')).toBeVisible()
+    await expect(student.getByText('2 participants')).toBeVisible()
+    await expect(student.locator('.video-card:not(.local):not(.empty) video')).toHaveCount(1)
+
     await teacherContext.close()
+    teacherClosed = true
+    await expect(student.getByText('1 participant', { exact: true })).toBeVisible()
+    await expect(student.locator('.video-card:not(.local):not(.empty) video')).toHaveCount(0)
+  } finally {
+    if (!teacherClosed) await teacherContext.close()
     await studentContext.close()
   }
 })
