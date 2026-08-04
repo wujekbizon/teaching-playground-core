@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { RoomConnection, type User } from '@teaching-playground/core'
+import { RoomConnection } from '@teaching-playground/core/room-connection'
+import type { User } from '@teaching-playground/core/user'
 
 type Participant = User & {
   userId?: string
@@ -47,6 +48,9 @@ export default function App() {
   const [cameraOn, setCameraOn] = useState(true)
   const [sharing, setSharing] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [recordingSeconds, setRecordingSeconds] = useState(0)
+  const [handRaised, setHandRaised] = useState(false)
+  const [notice, setNotice] = useState<{ tone: 'info' | 'error'; text: string } | null>(null)
   const [panel, setPanel] = useState<'chat' | 'events'>('chat')
   const connectionRef = useRef<RoomConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
@@ -74,6 +78,18 @@ export default function App() {
   useEffect(() => {
     if (localVideoRef.current) localVideoRef.current.srcObject = localStream
   }, [localStream])
+
+  useEffect(() => {
+    if (!recording) { setRecordingSeconds(0); return }
+    const timer = window.setInterval(() => setRecordingSeconds(value => value + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [recording])
+
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [notice])
 
   useEffect(() => () => {
     connectionRef.current?.disconnect()
@@ -122,8 +138,21 @@ export default function App() {
       connection.on('remote_stream_added', ({ peerId, stream: remote }: { peerId: string; stream: MediaStream }) => {
         setRemoteStreams(current => new Map(current).set(peerId, remote))
       })
+      connection.on('remote_stream_removed', ({ peerId }: { peerId: string }) => {
+        setRemoteStreams(current => { const next = new Map(current); next.delete(peerId); return next })
+      })
       connection.on('hand_raised', ({ userId }: { userId: string }) => setParticipants(current => current.map(item => item.id === userId ? { ...item, handRaised: true } : item)))
       connection.on('hand_lowered', ({ userId }: { userId: string }) => setParticipants(current => current.map(item => item.id === userId ? { ...item, handRaised: false } : item)))
+      connection.on('mute_all', () => forceMute('The instructor muted the classroom.'))
+      connection.on('muted_by_teacher', () => forceMute('You were muted by the instructor.'))
+      connection.on('kicked_from_room', ({ reason }: { reason: string }) => {
+        setNotice({ tone: 'error', text: `You were removed: ${reason}` })
+        resetSession()
+      })
+      connection.on('join_room_error', (error: unknown) => {
+        setNotice({ tone: 'error', text: `Could not join: ${stringify(error)}` })
+        resetSession()
+      })
       connection.on('recording_stopped', ({ blob }: { blob: Blob }) => {
         const link = document.createElement('a')
         link.href = URL.createObjectURL(blob)
@@ -136,21 +165,40 @@ export default function App() {
       addLog('out', 'connect', { roomId, role, serverUrl })
     } catch (error) {
       addLog('system', 'connect_failed', error)
+      setNotice({ tone: 'error', text: `Unable to connect: ${stringify(error)}` })
     }
   }
 
-  const disconnect = () => {
+  const resetSession = () => {
     connectionRef.current?.disconnect()
     connectionRef.current = null
     setConnected(false)
     setParticipants([])
     setRemoteStreams(new Map())
+    setSharing(false)
+    setRecording(false)
+    setHandRaised(false)
+  }
+
+  const forceMute = (text: string) => {
+    localStreamRef.current?.getAudioTracks().forEach(track => { track.enabled = false })
+    setMicOn(false)
+    setNotice({ tone: 'info', text })
+  }
+
+  const disconnect = () => {
+    resetSession()
     addLog('out', 'disconnect')
   }
 
   const toggleTrack = (kind: 'audio' | 'video') => {
     const track = localStream?.getTracks().find(item => item.kind === kind)
-    if (!track) return
+    if (!track) {
+      void ensureMedia().then(stream => {
+        if (connected) void connectionRef.current?.startStream(stream)
+      }).catch(error => setNotice({ tone: 'error', text: `Media unavailable: ${stringify(error)}` }))
+      return
+    }
     track.enabled = !track.enabled
     kind === 'audio' ? setMicOn(track.enabled) : setCameraOn(track.enabled)
     addLog('system', `${kind}_${track.enabled ? 'enabled' : 'disabled'}`)
@@ -159,17 +207,36 @@ export default function App() {
   const toggleScreen = async () => {
     const connection = connectionRef.current
     if (!connection) return
-    if (sharing) connection.stopScreenShare()
-    else await connection.startScreenShare()
-    setSharing(!sharing)
+    try {
+      if (sharing) { connection.stopScreenShare(); setSharing(false) }
+      else {
+        const stream = await connection.startScreenShare()
+        setSharing(true)
+        stream.getVideoTracks()[0]?.addEventListener('ended', () => setSharing(false), { once: true })
+      }
+    } catch (error) { setNotice({ tone: 'error', text: `Screen share failed: ${stringify(error)}` }) }
   }
 
   const toggleRecording = async () => {
     const connection = connectionRef.current
     if (!connection || !localStream) return
-    if (recording) connection.stopRecording()
-    else await connection.startRecording(localStream)
-    setRecording(!recording)
+    try {
+      if (recording) connection.stopRecording()
+      else { await connection.startRecording(localStream); setRecording(true) }
+    } catch (error) { setNotice({ tone: 'error', text: `Recording failed: ${stringify(error)}` }) }
+  }
+
+  const toggleHand = () => {
+    if (!connectionRef.current || !connected) return
+    if (handRaised) connectionRef.current.lowerHand()
+    else connectionRef.current.raiseHand()
+    setHandRaised(!handRaised)
+    addLog('out', handRaised ? 'lower_hand' : 'raise_hand')
+  }
+
+  const kick = (participant: Participant) => {
+    if (!window.confirm(`Remove ${participant.displayName ?? participant.username} from the classroom?`)) return
+    connectionRef.current?.kickParticipant(participant.id, 'Removed by instructor')
   }
 
   const sendMessage = (event: FormEvent) => {
@@ -181,6 +248,7 @@ export default function App() {
   }
 
   return <div className="app-shell">
+    {notice && <div className={`notice ${notice.tone}`} role="status">{notice.text}<button onClick={() => setNotice(null)}>×</button></div>}
     <header className="topbar">
       <div className="brand"><span className="brand-mark">TP</span><div><strong>Teaching Playground</strong><small>Classroom harness</small></div></div>
       <div className={`connection-pill ${connected ? 'online' : ''}`}><span />{connected ? 'Live session' : 'Not connected'}</div>
@@ -213,20 +281,20 @@ export default function App() {
           {remoteStreams.size === 0 && <article className="video-card empty"><div className="empty-ring">+</div><strong>Waiting for another participant</strong><span>Open this harness in a second tab</span></article>}
         </div>
         <div className="media-bar">
-          <button onClick={() => toggleTrack('audio')} className={!micOn ? 'active-off' : ''}><span>{micOn ? '●' : '×'}</span>{micOn ? 'Mute' : 'Unmute'}</button>
-          <button onClick={() => toggleTrack('video')} className={!cameraOn ? 'active-off' : ''}><span>▣</span>{cameraOn ? 'Camera' : 'Start camera'}</button>
-          <button onClick={toggleScreen} className={sharing ? 'selected' : ''}><span>↗</span>{sharing ? 'Stop sharing' : 'Share screen'}</button>
-          {role !== 'student' && <button onClick={toggleRecording} className={recording ? 'recording' : ''}><span>●</span>{recording ? 'Stop recording' : 'Record'}</button>}
-          <button onClick={() => connectionRef.current?.raiseHand()}><span>✋</span>Raise hand</button>
+          <button disabled={!connected} onClick={() => toggleTrack('audio')} className={!micOn ? 'active-off' : ''}><span>{micOn ? '●' : '×'}</span>{micOn ? 'Mute' : 'Unmute'}</button>
+          <button disabled={!connected} onClick={() => toggleTrack('video')} className={!cameraOn ? 'active-off' : ''}><span>▣</span>{cameraOn ? 'Camera' : 'Start camera'}</button>
+          <button disabled={!connected} onClick={() => void toggleScreen()} className={sharing ? 'selected' : ''}><span>↗</span>{sharing ? 'Stop sharing' : 'Share screen'}</button>
+          {role !== 'student' && <button disabled={!connected || !localStream} onClick={() => void toggleRecording()} className={recording ? 'recording' : ''}><span>●</span>{recording ? `Stop · ${recordingSeconds}s` : 'Record'}</button>}
+          <button disabled={!connected} onClick={toggleHand} className={handRaised ? 'selected' : ''}><span>✋</span>{handRaised ? 'Lower hand' : 'Raise hand'}</button>
         </div>
       </section>
 
       <aside className="side-panel">
         <div className="tabs"><button className={panel === 'chat' ? 'active' : ''} onClick={() => setPanel('chat')}>Chat</button><button className={panel === 'events' ? 'active' : ''} onClick={() => setPanel('events')}>Events <span>{logs.length}</span></button></div>
         {panel === 'chat' ? <>
-          <div className="participant-strip"><strong>People</strong>{participants.slice(0, 4).map(item => <div className="person" key={item.socketId}><span>{(item.displayName ?? item.username)[0]}</span><div><b>{item.displayName ?? item.username}</b><small>{item.role}{item.handRaised ? ' · Hand raised' : ''}</small></div>{role !== 'student' && item.id !== user.id && <button onClick={() => connectionRef.current?.muteParticipant(item.id)}>Mute</button>}</div>)}</div>
+          <div className="participant-strip"><div className="people-heading"><strong>People</strong>{role !== 'student' && connected && <button onClick={() => connectionRef.current?.muteAllParticipants()}>Mute all</button>}</div>{participants.length === 0 && <small className="no-people">Participants appear after you join.</small>}{participants.map(item => <div className="person" key={item.socketId}><span>{(item.displayName ?? item.username)[0]}</span><div><b>{item.displayName ?? item.username}</b><small>{item.role}{item.handRaised ? ' · ✋ Hand raised' : ''}</small></div>{role !== 'student' && item.id !== user.id && <div className="person-actions"><button onClick={() => connectionRef.current?.muteParticipant(item.id)}>Mute</button><button className="remove" onClick={() => kick(item)}>Remove</button></div>}</div>)}</div>
           <div className="chat-feed">{messages.length === 0 ? <div className="blank-state"><span>•••</span><strong>No messages yet</strong><p>Messages and history will appear here.</p></div> : messages.map(item => <div className="chat-message" key={item.messageId}><div><strong>{item.username}</strong><time>{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><p>{item.content}</p></div>)}</div>
-          <form className="composer" onSubmit={sendMessage}><input value={message} onChange={event => setMessage(event.target.value)} placeholder="Message the classroom…" /><button>↑</button></form>
+          <form className="composer" onSubmit={sendMessage}><input disabled={!connected} value={message} onChange={event => setMessage(event.target.value)} placeholder={connected ? 'Message the classroom…' : 'Join to send a message'} /><button disabled={!connected || !message.trim()} aria-label="Send message">↑</button></form>
         </> : <div className="event-feed">{logs.length === 0 ? <div className="blank-state"><strong>No events captured</strong><p>Connect to begin inspecting events.</p></div> : logs.map(log => <div className="event-row" key={log.id}><span className={log.direction}>{log.direction === 'in' ? '←' : log.direction === 'out' ? '→' : '·'}</span><div><b>{log.event}</b><small>{log.detail}</small></div><time>{log.time}</time></div>)}</div>}
       </aside>
     </main>
