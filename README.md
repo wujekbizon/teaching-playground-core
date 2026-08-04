@@ -426,6 +426,18 @@ event-loop delay, and heap growth:
 pnpm load:test --students 140
 ```
 
+For Phase 2C mixed validation, run eleven real browser sessions together with
+130 lightweight students in the same 141-participant room:
+
+```bash
+pnpm mixed:test
+```
+
+This explicit, resource-intensive scenario checks browser participant state,
+bidirectional chat, hand-raise and mute-all fan-out, disconnect cleanup, and
+uncaught page errors. See [`LOAD-TESTING.md`](LOAD-TESTING.md) for configuration
+and scope limitations.
+
 Open `http://localhost:5173` in two tabs, choose different names/roles, and join
 the same room. The Events panel records received and emitted classroom events to
 make negotiation and cleanup problems reproducible. For protected deployments,

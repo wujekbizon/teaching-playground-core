@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test:e2e": "pnpm --dir ../.. build && cross-env DEV_AUTH_ENABLED=true playwright test"
+    "test:e2e": "pnpm --dir ../.. build && cross-env DEV_AUTH_ENABLED=true playwright test --grep-invert @mixed",
+    "test:mixed": "pnpm --dir ../.. build && cross-env DEV_AUTH_ENABLED=true playwright test --grep @mixed"
   },
   "dependencies": {
     "@teaching-playground/core": "link:../..",
@@ -20,6 +21,7 @@
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^4.7.0",
     "cross-env": "^10.0.0",
+    "socket.io-client": "^4.8.3",
     "typescript": "^5.8.2",
     "vite": "^7.1.2"
   }

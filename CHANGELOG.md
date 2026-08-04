@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.2.1] - 2026-08-04
+
+### Added
+
+- Added the Phase 2C mixed-capacity Playwright scenario with one teacher
+  browser, ten isolated student browser contexts, and 130 lightweight students
+  sharing one 141-participant classroom.
+- Added `pnpm mixed:test`, configurable through
+  `MIXED_SIMULATED_STUDENTS`, with timing attachments and a teacher screenshot.
+
+### Validation
+
+- Verified participant synchronization across all eleven browsers at peak
+  capacity.
+- Verified browser-to-simulator and simulator-to-browser chat, a 130-student
+  hand-raise burst, mute-all fan-out, ten-percent disconnect cleanup, and zero
+  uncaught browser page errors.
+- Kept the mixed result scoped to a local, single-process scenario; simulated
+  students do not publish media or answer WebRTC negotiation.
+
 ## [2.2.0] - 2026-08-04
 
 ### Added
