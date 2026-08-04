@@ -1,17 +1,148 @@
 import { SystemError, ErrorCode } from '../../interfaces/errors.interface'
-import { EventConfig, Lecture, EventOptions, PersistenceAdapter } from '../../interfaces'
+import { EventConfig, Lecture, LectureReservation, EventOptions, PersistenceAdapter, ReservationFilter, ScheduleLectureOptions } from '../../interfaces'
 import { CreateLectureSchema, UpdateLectureSchema } from '../../interfaces/schema'
 import { JsonDatabase } from '../../utils/JsonDatabase'
 import { RealTimeCommunicationSystem } from '../comms/RealTimeCommunicationSystem'
 import { randomUUID } from 'crypto'
+import { Mutex } from 'async-mutex'
 
 export class EventManagementSystem {
   private db: PersistenceAdapter
   private commsSystem: RealTimeCommunicationSystem | null = null
+  private reservationMutex = new Mutex()
+  private readonly roomTurnoverMs: number
+
+  private static activeReservation(status: LectureReservation['status']): boolean {
+    return status !== 'cancelled' && status !== 'completed'
+  }
+
+  private static parseRange(startsAt: string, endsAt: string): { start: number; end: number } {
+    const instantPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/
+    const start = Date.parse(startsAt)
+    const end = Date.parse(endsAt)
+    if (!instantPattern.test(startsAt) || !instantPattern.test(endsAt) ||
+        !Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
+      throw new SystemError('INVALID_TIME_RANGE', 'startsAt and endsAt must be valid ISO timestamps with startsAt before endsAt')
+    }
+    return { start, end }
+  }
+
+  private async assertRoomForReservation(options: Pick<ScheduleLectureOptions, 'organizationId' | 'roomId' | 'capacity'>) {
+    const room = await this.db.findOne('rooms', { id: options.roomId })
+    if (!room) throw new SystemError('ROOM_NOT_FOUND', `Room ${options.roomId} not found`)
+    if (room.organizationId !== options.organizationId) {
+      throw new SystemError('ORGANIZATION_MISMATCH', 'Room and reservation must belong to the same organization')
+    }
+    if (room.status === 'maintenance') throw new SystemError('ROOM_UNAVAILABLE', `Room ${options.roomId} is in maintenance`)
+    if (options.capacity > room.capacity) {
+      throw new SystemError('ROOM_CAPACITY_EXCEEDED', `Requested capacity exceeds room capacity of ${room.capacity}`)
+    }
+    return room
+  }
+
+  private async findConflict(candidate: Pick<LectureReservation, 'organizationId' | 'roomId' | 'startsAt' | 'endsAt'>, excludeId?: string) {
+    const range = EventManagementSystem.parseRange(candidate.startsAt, candidate.endsAt)
+    const reservations = await this.db.find('events', { type: 'lecture', organizationId: candidate.organizationId, roomId: candidate.roomId }) as LectureReservation[]
+    return reservations.find(existing => existing.id !== excludeId && EventManagementSystem.activeReservation(existing.status) &&
+      range.start < Date.parse(existing.endsAt) + this.roomTurnoverMs &&
+      range.end > Date.parse(existing.startsAt) - this.roomTurnoverMs)
+  }
+
+  /** Conflict check and mutation are serialized for the bundled single-process adapter. */
+  async scheduleReservation(options: ScheduleLectureOptions): Promise<LectureReservation> {
+    return this.reservationMutex.runExclusive(async () => {
+      EventManagementSystem.parseRange(options.startsAt, options.endsAt)
+      if (options.name.trim().length < 3 || options.name.length > 100 ||
+          !Number.isInteger(options.capacity) || options.capacity < 1) {
+        throw new SystemError('EVENT_VALIDATION_FAILED', 'Reservation name and capacity are invalid')
+      }
+      try {
+        new Intl.DateTimeFormat('en', { timeZone: options.timezone }).format()
+      } catch {
+        throw new SystemError('EVENT_VALIDATION_FAILED', 'timezone must be a valid IANA timezone name')
+      }
+      await this.assertRoomForReservation(options)
+      const conflict = await this.findConflict(options)
+      if (conflict) throw new SystemError('RESERVATION_CONFLICT', 'The room is already reserved for this interval', { conflict })
+      const now = new Date().toISOString()
+      const reservation: LectureReservation = {
+        id: `lecture_${randomUUID()}`, type: 'lecture', status: 'scheduled', date: options.startsAt,
+        ...options, metadata: { createdAt: now, lastModified: now },
+      }
+      await this.db.insert('events', reservation)
+      return reservation
+    })
+  }
+
+  async listReservations(filter: ReservationFilter): Promise<LectureReservation[]> {
+    const query: Record<string, unknown> = { type: 'lecture', organizationId: filter.organizationId }
+    if (filter.roomId) query.roomId = filter.roomId
+    if (filter.teacherId) query.teacherId = filter.teacherId
+    if (filter.status) query.status = filter.status
+    const reservations = await this.db.find('events', query) as LectureReservation[]
+    const from = filter.from ? Date.parse(filter.from) : Number.NEGATIVE_INFINITY
+    const to = filter.to ? Date.parse(filter.to) : Number.POSITIVE_INFINITY
+    if (from >= to || Number.isNaN(from) || Number.isNaN(to)) throw new SystemError('INVALID_TIME_RANGE', 'Invalid reservation query range')
+    return reservations.filter(item => Date.parse(item.startsAt) < to && Date.parse(item.endsAt) > from)
+  }
+
+  async rescheduleReservation(id: string, organizationId: string, updates: { roomId?: string; startsAt?: string; endsAt: string }): Promise<LectureReservation> {
+    return this.reservationMutex.runExclusive(async () => {
+      const existing = await this.db.findOne('events', { id }) as LectureReservation | null
+      if (!existing) throw new SystemError('EVENT_NOT_FOUND', `Reservation ${id} not found`)
+      if (existing.organizationId !== organizationId) throw new SystemError('ORGANIZATION_MISMATCH', 'Reservation belongs to another organization')
+      if (!EventManagementSystem.activeReservation(existing.status)) throw new SystemError('ROOM_UNAVAILABLE', 'Completed or cancelled reservations cannot be rescheduled')
+      const candidate = { ...existing, ...updates }
+      EventManagementSystem.parseRange(candidate.startsAt, candidate.endsAt)
+      await this.assertRoomForReservation(candidate)
+      const conflict = await this.findConflict(candidate, id)
+      if (conflict) throw new SystemError('RESERVATION_CONFLICT', 'The room is already reserved for this interval', { conflict })
+      return await this.db.update('events', { id }, { ...updates, date: candidate.startsAt }) as LectureReservation
+    })
+  }
+
+  async updateReservation(id: string, organizationId: string, updates: {
+    name?: string; description?: string; teacherId?: string; capacity?: number; timezone?: string
+  }): Promise<LectureReservation> {
+    const existing = await this.db.findOne('events', { id }) as LectureReservation | null
+    if (!existing) throw new SystemError('EVENT_NOT_FOUND', `Reservation ${id} not found`)
+    if (existing.organizationId !== organizationId) throw new SystemError('ORGANIZATION_MISMATCH', 'Reservation belongs to another organization')
+    if (!EventManagementSystem.activeReservation(existing.status)) throw new SystemError('ROOM_UNAVAILABLE', 'Completed or cancelled reservations cannot be updated')
+    if (updates.name !== undefined && (updates.name.trim().length < 3 || updates.name.length > 100)) {
+      throw new SystemError('EVENT_VALIDATION_FAILED', 'Reservation name must contain between 3 and 100 characters')
+    }
+    if (updates.capacity !== undefined) await this.assertRoomForReservation({ ...existing, capacity: updates.capacity })
+    return await this.db.update('events', { id }, { ...updates, metadata: {
+      ...existing.metadata, lastModified: new Date().toISOString(),
+    } }) as LectureReservation
+  }
+
+  async cancelReservation(id: string, organizationId: string, reason?: string): Promise<LectureReservation> {
+    const existing = await this.db.findOne('events', { id }) as LectureReservation | null
+    if (!existing) throw new SystemError('EVENT_NOT_FOUND', `Reservation ${id} not found`)
+    if (existing.organizationId !== organizationId) throw new SystemError('ORGANIZATION_MISMATCH', 'Reservation belongs to another organization')
+    if (!EventManagementSystem.activeReservation(existing.status)) throw new SystemError('ROOM_UNAVAILABLE', 'Reservation is already final')
+    return await this.db.update('events', { id }, { status: 'cancelled', metadata: {
+      ...existing.metadata, cancelledAt: new Date().toISOString(), cancellationReason: reason,
+    } }) as LectureReservation
+  }
+
+  async getRoomAvailability(options: { organizationId: string; startsAt: string; endsAt: string; capacity?: number; excludeReservationId?: string }): Promise<any[]> {
+    EventManagementSystem.parseRange(options.startsAt, options.endsAt)
+    const rooms = await this.db.find('rooms', { organizationId: options.organizationId })
+    const available = []
+    for (const room of rooms) {
+      if (room.status === 'maintenance' || (options.capacity !== undefined && room.capacity < options.capacity)) continue
+      if (!await this.findConflict({ ...options, roomId: room.id }, options.excludeReservationId)) available.push(room)
+    }
+    return available
+  }
 
   constructor(private config?: EventConfig, persistence?: PersistenceAdapter) {
     // Use singleton instance of JsonDatabase
     this.db = persistence ?? JsonDatabase.getInstance()
+    this.roomTurnoverMs = config?.roomTurnoverMs ?? 15 * 60_000
+    if (this.roomTurnoverMs < 0) throw new SystemError('EVENT_VALIDATION_FAILED', 'roomTurnoverMs cannot be negative')
   }
 
   /**
