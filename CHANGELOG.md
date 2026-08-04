@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.3.0] - 2026-08-04
+
+### Added
+
+- Added the Phase 2D.0 multi-room isolation baseline, running three or more
+  concurrent rooms with distinct teachers and students on one backend.
+- Added `pnpm isolation:test` with configurable room and student counts and a
+  JSON report containing per-room admission, interaction, and cleanup latency
+  plus aggregate event-loop delay, heap growth, and duration metrics.
+
+### Validation
+
+- Verified participant state, chat, hand raises, mute-all moderation, stream
+  lifecycle, recording notifications, and cleanup do not leak across rooms.
+- Verified every room remains interactive before isolated cleanup.
+
 ## [2.2.2] - 2026-08-04
 
 ### Documentation
