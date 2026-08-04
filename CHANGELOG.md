@@ -9,6 +9,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.2.0] - 2026-08-04
+
+### Added
+
+- Added a browser-based React/Vite classroom harness with authenticated
+  teacher, student, and admin development identities.
+- Added Playwright coverage for one teacher and ten simultaneous students,
+  late-join chat history, two-party WebRTC media, camera and microphone
+  controls, screen sharing, recording downloads, graceful rejoin, and abrupt
+  disconnect cleanup.
+- Added a lightweight authenticated classroom load simulator with admission
+  percentiles, chat and moderation fan-out timing, disconnect cleanup,
+  event-loop delay, and heap-growth reporting for 100–140-student baselines.
+- Added browser-focused `./room-connection` and `./user` package exports.
+
+### Changed
+
+- Replaced the Node.js `EventEmitter` dependency in `RoomConnection` with a
+  browser-safe internal event emitter while preserving its listener API.
+- Made harness development identities follow the selected display name and
+  role until a custom authentication token is entered.
+- Limited room-level stream status claims to teachers and admins while still
+  allowing student peer media.
+- Expanded capability documentation to distinguish implemented, host-provided,
+  partially implemented, unvalidated, and roadmap-only functionality.
+
+### Fixed
+
+- Fixed duplicate and race-prone chat history rendering by merging and
+  deduplicating messages by ID.
+- Fixed participant self-identification under authenticated identities and
+  immediate kicked-participant cleanup.
+- Fixed media teardown so leaving stops active recording, screen sharing,
+  camera, and microphone tracks and clears session state before rejoining.
+- Fixed harness package linking and automatic core builds so Vite resolves the
+  generated browser entry points consistently.
+
+### Validation
+
+- TypeScript library and Vite harness production builds pass.
+- ESLint passes for library and load-test TypeScript sources.
+- 17 Jest suites and 233 tests pass.
+- Four Playwright classroom scenarios pass in Chromium.
+- Load simulations pass at 100, 120, and 140 students with complete expected
+  admission, chat, hand-raise, mute-all, and disconnect-cleanup delivery.
+
 ## [2.1.1] - 2026-08-03
 
 ### Security
