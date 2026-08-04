@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { RoomConnection } from '@teaching-playground/core/room-connection'
 import type { User } from '@teaching-playground/core/user'
+import { ManagementViews } from './ManagementViews'
 
 type Participant = User & {
   userId?: string
@@ -32,6 +33,7 @@ const stringify = (value: unknown) => {
 }
 
 export default function App() {
+  const [view, setView] = useState<'rooms' | 'schedule' | 'live'>('live')
   const [serverUrl, setServerUrl] = useState('http://localhost:3001')
   const [roomId, setRoomId] = useState('clinical-skills-101')
   const [token, setToken] = useState('teacher:Dr. Maya Chen')
@@ -275,6 +277,8 @@ export default function App() {
 
   const participantCount = Math.max(participants.length, connected ? 1 : 0)
 
+  if (view !== 'live') return <ManagementViews view={view} setView={setView} serverUrl={serverUrl} />
+
   return <div className="app-shell">
     {notice && <div className={`notice ${notice.tone}`} role="status">{notice.text}<button onClick={() => setNotice(null)}>×</button></div>}
     <header className="topbar">
@@ -283,6 +287,7 @@ export default function App() {
       <div className="session-code">Room <strong>{roomId}</strong></div>
       <button className="avatar" title={name}>{name.split(' ').map(part => part[0]).slice(0, 2).join('')}</button>
     </header>
+    <nav className="live-navigation" aria-label="Primary navigation"><button onClick={() => setView('rooms')}>Rooms</button><button onClick={() => setView('schedule')}>Schedule</button><button className="active">Live classroom</button></nav>
 
     <main className="workspace">
       <aside className="setup-card">
