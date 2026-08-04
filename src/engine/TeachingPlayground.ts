@@ -3,16 +3,19 @@ import { RealTimeCommunicationSystem } from '../systems/comms/RealTimeCommunicat
 import { DataManagementSystem } from '../systems/data/DataManagementSystem'
 import { EventManagementSystem } from '../systems/event/EventManagementSystem'
 import { RoomManagementSystem } from '../systems/room/RoomManagementSystem'
-import { Lecture } from '../interfaces/event.interface'
+import { Lecture, LectureReservation, ReservationFilter } from '../interfaces/event.interface'
 import { SystemError } from '../interfaces'
 import { User, TeacherProfile } from '../interfaces/user.interface'
 import { RoomFeatures } from '../interfaces/room.interface'
+import { ReservationScheduler, SchedulerRunReport } from '../systems/event/ReservationScheduler'
+import { JsonDatabase } from '../utils/JsonDatabase'
 
 export default class TeachingPlayground {
   public roomSystem: RoomManagementSystem
   private commsSystem: RealTimeCommunicationSystem
   private eventSystem: EventManagementSystem
   private dataSystem: DataManagementSystem
+  private scheduler: ReservationScheduler
   private currentUser: User | null = null
   private initialized = false
 
@@ -21,6 +24,7 @@ export default class TeachingPlayground {
     this.roomSystem = new RoomManagementSystem(config.roomConfig, this.commsSystem, config.persistence)
     this.eventSystem = new EventManagementSystem(config.eventConfig, config.persistence)
     this.dataSystem = new DataManagementSystem(config.dataConfig)
+    this.scheduler = new ReservationScheduler(config.persistence ?? JsonDatabase.getInstance(), this.commsSystem, config.eventConfig)
 
     // Inject commsSystem into eventSystem for room cleanup (v1.1.3 feature)
     this.eventSystem.setCommsSystem(this.commsSystem)
@@ -38,6 +42,7 @@ export default class TeachingPlayground {
     async createClassroom(options: { name: string; capacity: number; features?: Partial<RoomFeatures> }) {
       const room = await this.roomSystem.createRoom({
         name: options.name,
+        organizationId: this.currentUser?.organizationId,
         capacity: options.capacity,
         features: options.features || {
           hasVideo: true,
@@ -47,7 +52,7 @@ export default class TeachingPlayground {
           hasScreenShare: true,
         },
       })
-      this.commsSystem.setupForRoom(room.id)
+      if (this.commsSystem.isInitialized()) this.commsSystem.setupForRoom(room.id)
       return room
     }
 
@@ -62,6 +67,66 @@ export default class TeachingPlayground {
         `User ${user.username} is not authorized to ${action}. Required role: teacher or admin`
       )
     }
+  }
+
+  private requireOrganization(): string {
+    this.ensureUserAuthorized(this.currentUser, 'manage reservations')
+    if (!this.currentUser.organizationId) {
+      throw new SystemError('FORBIDDEN', 'A trusted organizationId is required for reservation operations')
+    }
+    return this.currentUser.organizationId
+  }
+
+  async createRoom(options: { name: string; capacity: number; features?: Partial<RoomFeatures> }) {
+    const room = await this.roomSystem.createRoom({ ...options, organizationId: this.requireOrganization() })
+    if (this.commsSystem.isInitialized()) this.commsSystem.setupForRoom(room.id)
+    return room
+  }
+
+  async listRooms(options: { status?: 'available' | 'occupied' | 'scheduled' | 'maintenance' } = {}) {
+    return this.roomSystem.listRooms({ ...options, organizationId: this.requireOrganization() })
+  }
+
+  async setRoomMaintenance(roomId: string, enabled: boolean) {
+    const organizationId = this.requireOrganization()
+    const room = await this.roomSystem.getRoom(roomId)
+    if (room.organizationId !== organizationId) throw new SystemError('ORGANIZATION_MISMATCH', 'Room belongs to another organization')
+    return this.roomSystem.updateRoom(roomId, { status: enabled ? 'maintenance' : 'available' })
+  }
+
+  async scheduleReservation(options: {
+    roomId: string; name: string; startsAt: string; endsAt: string; timezone: string;
+    capacity: number; description?: string
+  }): Promise<LectureReservation> {
+    const organizationId = this.requireOrganization()
+    return this.eventSystem.scheduleReservation({
+      ...options,
+      organizationId,
+      teacherId: this.currentUser!.id,
+      createdBy: this.currentUser!.username,
+    })
+  }
+
+  async listReservations(filter: Omit<ReservationFilter, 'organizationId'> = {}): Promise<LectureReservation[]> {
+    return this.eventSystem.listReservations({ ...filter, organizationId: this.requireOrganization() })
+  }
+
+  async getRoomAvailability(options: { startsAt: string; endsAt: string; capacity?: number }) {
+    return this.eventSystem.getRoomAvailability({ ...options, organizationId: this.requireOrganization() })
+  }
+
+  async rescheduleLecture(lectureId: string, updates: { roomId?: string; startsAt?: string; endsAt: string }) {
+    return this.eventSystem.rescheduleReservation(lectureId, this.requireOrganization(), updates)
+  }
+
+  async updateReservation(lectureId: string, updates: {
+    name?: string; description?: string; teacherId?: string; capacity?: number; timezone?: string
+  }) {
+    return this.eventSystem.updateReservation(lectureId, this.requireOrganization(), updates)
+  }
+
+  async cancelReservation(lectureId: string, reason?: string) {
+    return this.eventSystem.cancelReservation(lectureId, this.requireOrganization(), reason)
   }
 
   // Enhanced Event Management
@@ -235,6 +300,7 @@ export default class TeachingPlayground {
 
   // Lifecycle
   async shutdown(): Promise<void> {
+    this.scheduler.stop()
     await this.commsSystem.shutdown()
     this.initialized = false
   }
@@ -244,6 +310,11 @@ export default class TeachingPlayground {
       throw new SystemError('ALREADY_INITIALIZED', 'Teaching Playground is already initialized')
     }
     this.commsSystem.initialize(server)
+    this.scheduler.start()
     this.initialized = true
+  }
+
+  runSchedulerOnce(): Promise<SchedulerRunReport> {
+    return this.scheduler.runOnce()
   }
 }

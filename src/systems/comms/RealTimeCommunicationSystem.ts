@@ -44,8 +44,10 @@ interface RateLimitEntry {
 // v1.4.6: Interface for tracking lecture information
 interface LectureInfo {
   id: string
-  status: 'scheduled' | 'delayed' | 'active' | 'in-progress' | 'completed' | 'cancelled'
+  status: 'scheduled' | 'open' | 'delayed' | 'active' | 'in-progress' | 'completed' | 'cancelled'
   roomId: string
+  capacity?: number
+  organizationId?: string
 }
 
 export class RealTimeCommunicationSystem extends EventEmitter {
@@ -166,7 +168,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       console.log(`Client connected: ${socket.id}`)
 
       // Room events
-      socket.on('join_room', (data: { roomId: string; user?: User }) => {
+      socket.on('join_room', (data: { roomId: string; reservationId?: string; user?: User }) => {
         const user = socket.data.user as User | undefined ?? data.user
         if (!user || (this.config?.requireAuthentication && !socket.data.user)) {
           socket.emit('join_room_error', {
@@ -176,7 +178,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
           })
           return
         }
-        this.handleJoinRoom(socket, data.roomId, user)
+        this.handleJoinRoom(socket, data.roomId, user, data.reservationId)
       })
 
       socket.on('leave_room', (roomId: string) => {
@@ -320,15 +322,20 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     }
   }
 
-  private handleJoinRoom(socket: any, roomId: string, user: User) {
+  private handleJoinRoom(socket: any, roomId: string, user: User, reservationId?: string) {
     try {
       // v1.4.6: Validate lecture status before allowing join
       const lectureId = this.roomLectureMap.get(roomId)
       if (lectureId) {
         const lecture = this.lectureLookup.get(lectureId)
         if (lecture) {
+          if (lecture.organizationId && (reservationId !== lecture.id || user.organizationId !== lecture.organizationId)) {
+            socket.emit('join_room_error', { code: reservationId !== lecture.id ? 'ROOM_UNAVAILABLE' : 'ORGANIZATION_MISMATCH',
+              message: 'A matching reservation and organization are required', roomId })
+            return
+          }
           // Only allow joining if lecture is active or in-progress
-          if (lecture.status !== 'active' && lecture.status !== 'in-progress') {
+          if (lecture.status !== 'open' && lecture.status !== 'active' && lecture.status !== 'in-progress') {
             const statusMessages = {
               'completed': 'This lecture has ended',
               'cancelled': 'This lecture has been cancelled',
@@ -342,6 +349,14 @@ export class RealTimeCommunicationSystem extends EventEmitter {
               message,
               lectureStatus: lecture.status,
               roomId
+            })
+            return
+          }
+          const participants = this.rooms.get(roomId)
+          if (lecture.capacity !== undefined && participants && participants.size >= lecture.capacity) {
+            socket.emit('join_room_error', {
+              code: 'ROOM_CAPACITY_EXCEEDED', message: `This lecture has reached its capacity of ${lecture.capacity}`,
+              lectureStatus: lecture.status, roomId,
             })
             return
           }
@@ -963,9 +978,9 @@ export class RealTimeCommunicationSystem extends EventEmitter {
    * v1.4.6: Register a lecture for a room
    * Called when lecture starts (status becomes 'active' or 'in-progress')
    */
-  registerLecture(lectureId: string, roomId: string, status: LectureInfo['status']): void {
+  registerLecture(lectureId: string, roomId: string, status: LectureInfo['status'], capacity?: number, organizationId?: string): void {
     this.roomLectureMap.set(roomId, lectureId)
-    this.lectureLookup.set(lectureId, { id: lectureId, status, roomId })
+    this.lectureLookup.set(lectureId, { id: lectureId, status, roomId, capacity, organizationId })
     console.log(`Registered lecture ${lectureId} for room ${roomId} with status '${status}'`)
   }
 
@@ -990,7 +1005,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
   unregisterLecture(lectureId: string): void {
     const lecture = this.lectureLookup.get(lectureId)
     if (lecture) {
-      this.roomLectureMap.delete(lecture.roomId)
+      if (this.roomLectureMap.get(lecture.roomId) === lectureId) this.roomLectureMap.delete(lecture.roomId)
       this.lectureLookup.delete(lectureId)
       console.log(`Unregistered lecture ${lectureId} from room ${lecture.roomId}`)
     } else {
@@ -1015,7 +1030,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     }
 
     // Room is available only if lecture is active or in-progress
-    return lecture.status === 'active' || lecture.status === 'in-progress'
+    return lecture.status === 'open' || lecture.status === 'active' || lecture.status === 'in-progress'
   }
 
   async shutdown(): Promise<void> {

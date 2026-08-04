@@ -3,6 +3,21 @@
 This private React/Vite example exercises the browser-facing API of
 `@teaching-playground/core`. It is a diagnostic tool, not the final product UI.
 
+The harness has three top-level views: **Rooms**, **Schedule**, and **Live
+classroom**. With `DEV_AUTH_ENABLED=true`, the development server exposes the
+organization-scoped management endpoints consumed by the Rooms and Schedule
+views. The reference organization is visibly fixed to `school-demo`; these
+development endpoints are unavailable when development authentication is off
+and are refused in production mode.
+
+Rooms supports catalog refresh, capacity filtering, creation, and maintenance.
+Schedule supports persistent reservation listing, availability search with UTC
+payloads, scheduling, rescheduling, conflict feedback, and cancellation.
+The development scheduler automatically opens reservations before their start,
+marks them in progress at the start, and completes them after the configured
+grace period. Eligible reservations expose a **Join live** action that carries
+the reservation identity into WebSocket admission.
+
 ## Run
 
 ```bash

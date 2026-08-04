@@ -1,6 +1,6 @@
 {
   "name": "@teaching-playground/core",
-  "version": "2.2.2",
+  "version": "2.6.0",
   "description": "A production-ready WebSocket and WebRTC virtual classroom system for real-time online education with video streaming, chat, and lecture management",
   "keywords": [
     "education",
@@ -66,6 +66,7 @@
     "harness:test": "pnpm --dir examples/classroom-harness test:e2e",
     "mixed:test": "pnpm --dir examples/classroom-harness test:mixed",
     "load:test": "tsx scripts/classroom-load-test.ts",
+    "isolation:test": "tsx scripts/multi-room-isolation-test.ts",
     "test:package": "./scripts/test-package.sh",
     "test:integration": "./scripts/test-in-project.sh",
     "prepack": "npm run build",
