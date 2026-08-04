@@ -2,6 +2,15 @@ import { createServer } from 'http'
 import { pathToFileURL } from 'url'
 import { RealTimeCommunicationSystem } from './systems/comms/RealTimeCommunicationSystem'
 import type { User } from './interfaces/user.interface'
+import TeachingPlayground from './engine/TeachingPlayground'
+import { SystemError } from './interfaces/errors.interface'
+
+const readJson = (req: import('http').IncomingMessage) => new Promise<Record<string, any>>((resolve, reject) => {
+  let body = ''
+  req.on('data', chunk => { body += chunk; if (body.length > 1_000_000) reject(new Error('Request body too large')) })
+  req.on('end', () => { try { resolve(body ? JSON.parse(body) : {}) } catch (error) { reject(error) } })
+  req.on('error', reject)
+})
 
 function getAllowedOrigins(): string[] {
   const configured = process.env.ALLOWED_ORIGINS || process.env.NEXT_PUBLIC_WS_URL
@@ -85,16 +94,63 @@ validateEnvironment()
 export async function startWebSocketServer(port: number = 3001) {
   try {
     console.log('Starting Teaching Playground WebSocket Server...')
-    
-    const server = createServer((req, res) => {
-      res.writeHead(200, { 'Content-Type': 'text/plain' })
-      res.end('Teaching Playground WebSocket Server')
-    })
-
     const developmentAuth = process.env.DEV_AUTH_ENABLED === 'true'
     if (developmentAuth && process.env.NODE_ENV === 'production') {
       throw new Error('DEV_AUTH_ENABLED cannot be used in production')
     }
+
+    const scheduling = developmentAuth ? new TeachingPlayground({}) : null
+    scheduling?.setCurrentUser({ id: 'dev-admin', organizationId: 'school-demo',
+      username: 'Harness administrator', displayName: 'Harness administrator', role: 'admin', status: 'online' })
+    const server = createServer((req, res) => {
+      const origin = req.headers.origin
+      if (origin && getAllowedOrigins().includes(origin)) res.setHeader('Access-Control-Allow-Origin', origin)
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+      if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
+
+      const respond = (status: number, body: unknown) => {
+        res.writeHead(status, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(body))
+      }
+      const handleApi = async () => {
+        if (!scheduling || !req.url?.startsWith('/api/')) return false
+        const url = new URL(req.url, 'http://localhost')
+        if (url.pathname === '/api/rooms' && req.method === 'GET') respond(200, await scheduling.listRooms())
+        else if (url.pathname === '/api/rooms' && req.method === 'POST') respond(201, await scheduling.createRoom(await readJson(req) as any))
+        else if (url.pathname === '/api/reservations' && req.method === 'GET') respond(200, await scheduling.listReservations({
+          roomId: url.searchParams.get('roomId') ?? undefined,
+          status: url.searchParams.get('status') as any ?? undefined,
+          from: url.searchParams.get('from') ?? undefined,
+          to: url.searchParams.get('to') ?? undefined,
+        }))
+        else if (url.pathname === '/api/reservations' && req.method === 'POST') respond(201, await scheduling.scheduleReservation(await readJson(req) as any))
+        else if (url.pathname === '/api/availability' && req.method === 'GET') respond(200, await scheduling.getRoomAvailability({
+          startsAt: url.searchParams.get('startsAt') ?? '', endsAt: url.searchParams.get('endsAt') ?? '',
+          capacity: url.searchParams.has('capacity') ? Number(url.searchParams.get('capacity')) : undefined,
+        }))
+        else {
+          const cancelMatch = url.pathname.match(/^\/api\/reservations\/([^/]+)\/cancel$/)
+          const rescheduleMatch = url.pathname.match(/^\/api\/reservations\/([^/]+)\/reschedule$/)
+          const maintenanceMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/maintenance$/)
+          if (cancelMatch && req.method === 'POST') respond(200, await scheduling.cancelReservation(decodeURIComponent(cancelMatch[1])))
+          else if (rescheduleMatch && req.method === 'POST') respond(200, await scheduling.rescheduleLecture(decodeURIComponent(rescheduleMatch[1]), await readJson(req) as any))
+          else if (maintenanceMatch && req.method === 'POST') {
+            const body = await readJson(req)
+            respond(200, await scheduling.setRoomMaintenance(decodeURIComponent(maintenanceMatch[1]), body.enabled === true))
+          } else return false
+        }
+        return true
+      }
+      void handleApi().then(handled => {
+        if (!handled && !res.headersSent) { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('Teaching Playground WebSocket Server') }
+      }).catch(error => {
+        const systemError = error instanceof SystemError ? error : new SystemError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Request failed')
+        if (!res.headersSent) respond(systemError.code === 'RESERVATION_CONFLICT' ? 409 : 400, {
+          code: systemError.code, message: systemError.message, details: systemError.details,
+        })
+      })
+    })
 
     const commsSystem = new RealTimeCommunicationSystem({
       allowedOrigins: getAllowedOrigins(),

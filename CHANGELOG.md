@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [2.5.0] - 2026-08-04
+
+### Added
+
+- Added Phase 2D.2 Rooms and Schedule views to the browser harness alongside
+  the existing Live classroom view.
+- Added organization-scoped development HTTP endpoints for room creation,
+  listing, maintenance, availability search, reservation scheduling,
+  rescheduling, listing, and cancellation.
+- Added browser coverage for room creation and filtering, maintenance changes,
+  availability selection, scheduling, rescheduling, overlap feedback, and
+  cancellation, including a full-page workflow screenshot.
+
+### Fixed
+
+- Replaced CommonJS `require` calls in JSON persistence with ESM-compatible
+  filesystem imports so the development scheduling server can persist data.
+- Deferred room communication setup until the communication system is
+  initialized, allowing management-only room creation before WebSocket startup.
+
 ## [2.4.0] - 2026-08-04
 
 ### Added

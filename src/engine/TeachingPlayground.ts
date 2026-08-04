@@ -48,7 +48,7 @@ export default class TeachingPlayground {
           hasScreenShare: true,
         },
       })
-      this.commsSystem.setupForRoom(room.id)
+      if (this.commsSystem.isInitialized()) this.commsSystem.setupForRoom(room.id)
       return room
     }
 
@@ -75,12 +75,19 @@ export default class TeachingPlayground {
 
   async createRoom(options: { name: string; capacity: number; features?: Partial<RoomFeatures> }) {
     const room = await this.roomSystem.createRoom({ ...options, organizationId: this.requireOrganization() })
-    this.commsSystem.setupForRoom(room.id)
+    if (this.commsSystem.isInitialized()) this.commsSystem.setupForRoom(room.id)
     return room
   }
 
   async listRooms(options: { status?: 'available' | 'occupied' | 'scheduled' | 'maintenance' } = {}) {
     return this.roomSystem.listRooms({ ...options, organizationId: this.requireOrganization() })
+  }
+
+  async setRoomMaintenance(roomId: string, enabled: boolean) {
+    const organizationId = this.requireOrganization()
+    const room = await this.roomSystem.getRoom(roomId)
+    if (room.organizationId !== organizationId) throw new SystemError('ORGANIZATION_MISMATCH', 'Room belongs to another organization')
+    return this.roomSystem.updateRoom(roomId, { status: enabled ? 'maintenance' : 'available' })
   }
 
   async scheduleReservation(options: {
