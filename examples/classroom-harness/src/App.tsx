@@ -136,7 +136,9 @@ export default function App() {
         })
       })
       connection.on('message_history', (history: typeof messages) => {
-        setMessages([...new Map(history.map(item => [item.messageId, item])).values()])
+        setMessages(current => [...new Map(
+          [...history, ...current].map(item => [item.messageId, item]),
+        ).values()])
       })
       connection.on('message_received', (incoming: (typeof messages)[number]) => {
         setMessages(current => current.some(item => item.messageId === incoming.messageId)
@@ -186,6 +188,7 @@ export default function App() {
     setConnected(false)
     setLocalSocketId(null)
     setParticipants([])
+    setMessages([])
     setRemoteStreams(new Map())
     setSharing(false)
     setRecording(false)

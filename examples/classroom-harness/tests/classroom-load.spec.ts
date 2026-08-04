@@ -8,12 +8,19 @@ type ClassroomUser = {
 
 const studentCount = 10
 
-async function joinClassroom(page: Page, role: 'teacher' | 'student', username: string) {
+async function joinClassroom(
+  page: Page,
+  role: 'teacher' | 'student',
+  username: string,
+  roomId = 'clinical-skills-101',
+  withMedia = false,
+) {
   await page.goto('/')
+  await page.getByLabel('Room ID').fill(roomId)
   await page.getByLabel('Display name').fill(username)
   await page.getByLabel('Role').selectOption(role)
   await page.getByLabel('Auth token').fill(`${role}:${username}`)
-  await page.getByRole('button', { name: 'Join without media' }).click()
+  await page.getByRole('button', { name: withMedia ? 'Join with camera' : 'Join without media' }).click()
   await expect(page.getByText('Live session')).toBeVisible()
 }
 
@@ -77,5 +84,34 @@ test('one teacher moderates ten simultaneous students', async ({ browser }, test
     expect(errors).toEqual([])
   } finally {
     for (const user of users) await user.context.close()
+  }
+})
+
+test('a late student receives chat history and subsequent messages', async ({ browser }) => {
+  const teacherContext = await browser.newContext({ permissions: ['camera', 'microphone'] })
+  const studentContext = await browser.newContext()
+  const teacher = await teacherContext.newPage()
+  const student = await studentContext.newPage()
+  const roomId = `chat-history-${Date.now()}`
+
+  try {
+    await joinClassroom(teacher, 'teacher', 'history-teacher', roomId, true)
+    await teacher.getByPlaceholder('Message the classroom…').fill('hello')
+    await teacher.getByRole('button', { name: 'Send message' }).click()
+    await expect(teacher.locator('.chat-message')).toHaveCount(1)
+
+    await joinClassroom(student, 'student', 'history-student', roomId)
+    await expect(student.locator('.chat-message')).toHaveCount(1)
+    await expect(student.locator('.chat-message').filter({ hasText: 'hello' })).toHaveCount(1)
+
+    await student.getByPlaceholder('Message the classroom…').fill('hi')
+    await student.getByRole('button', { name: 'Send message' }).click()
+    await expect(teacher.locator('.chat-message')).toHaveCount(2)
+    await expect(student.locator('.chat-message')).toHaveCount(2)
+    await expect(teacher.locator('.chat-message p').getByText('hi', { exact: true })).toHaveCount(1)
+    await expect(student.locator('.chat-message p').getByText('hi', { exact: true })).toHaveCount(1)
+  } finally {
+    await teacherContext.close()
+    await studentContext.close()
   }
 })
