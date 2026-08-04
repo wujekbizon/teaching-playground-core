@@ -405,6 +405,18 @@ because the example consumes the repository through its browser-safe
 `room-connection` package entry point in `dist`, just like an installed
 application does.
 
+To run the repeatable one-teacher/ten-student browser simulation, install
+Chromium once and execute the harness test from the repository root:
+
+```bash
+pnpm --dir examples/classroom-harness exec playwright install chromium
+pnpm harness:test
+```
+
+The simulation verifies concurrent admission, participant state, chat delivery,
+hand raising, mute-all and individual mute controls, participant removal, and
+uncaught browser errors across eleven isolated browser contexts.
+
 Open `http://localhost:5173` in two tabs, choose different names/roles, and join
 the same room. The Events panel records received and emitted classroom events to
 make negotiation and cleanup problems reproducible. For protected deployments,

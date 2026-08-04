@@ -38,6 +38,7 @@ export default function App() {
   const [name, setName] = useState('Dr. Maya Chen')
   const [role, setRole] = useState<User['role']>('teacher')
   const [connected, setConnected] = useState(false)
+  const [localSocketId, setLocalSocketId] = useState<string | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
   const [messages, setMessages] = useState<Array<{ messageId: string; username: string; content: string; timestamp: string }>>([])
   const [message, setMessage] = useState('')
@@ -115,6 +116,7 @@ export default function App() {
       eventNames.forEach(event => connection.on(event, (payload: unknown) => addLog('in', event, payload)))
       connection.on('connected', () => {
         setConnected(true)
+        setLocalSocketId(connection.getSocketId() ?? null)
         if (stream) {
           void connection.startStream(stream).catch(error => addLog('system', 'stream_failed', error))
         }
@@ -133,8 +135,14 @@ export default function App() {
           const next = new Map(current); next.delete(participant.socketId); return next
         })
       })
-      connection.on('message_history', (history: typeof messages) => setMessages(history))
-      connection.on('message_received', (incoming: (typeof messages)[number]) => setMessages(current => [...current, incoming]))
+      connection.on('message_history', (history: typeof messages) => {
+        setMessages([...new Map(history.map(item => [item.messageId, item])).values()])
+      })
+      connection.on('message_received', (incoming: (typeof messages)[number]) => {
+        setMessages(current => current.some(item => item.messageId === incoming.messageId)
+          ? current
+          : [...current, incoming])
+      })
       connection.on('remote_stream_added', ({ peerId, stream: remote }: { peerId: string; stream: MediaStream }) => {
         setRemoteStreams(current => new Map(current).set(peerId, remote))
       })
@@ -148,6 +156,9 @@ export default function App() {
       connection.on('kicked_from_room', ({ reason }: { reason: string }) => {
         setNotice({ tone: 'error', text: `You were removed: ${reason}` })
         resetSession()
+      })
+      connection.on('participant_kicked', ({ userId }: { userId: string }) => {
+        setParticipants(current => current.filter(item => item.id !== userId))
       })
       connection.on('join_room_error', (error: unknown) => {
         setNotice({ tone: 'error', text: `Could not join: ${stringify(error)}` })
@@ -173,6 +184,7 @@ export default function App() {
     connectionRef.current?.disconnect()
     connectionRef.current = null
     setConnected(false)
+    setLocalSocketId(null)
     setParticipants([])
     setRemoteStreams(new Map())
     setSharing(false)
@@ -292,7 +304,7 @@ export default function App() {
       <aside className="side-panel">
         <div className="tabs"><button className={panel === 'chat' ? 'active' : ''} onClick={() => setPanel('chat')}>Chat</button><button className={panel === 'events' ? 'active' : ''} onClick={() => setPanel('events')}>Events <span>{logs.length}</span></button></div>
         {panel === 'chat' ? <>
-          <div className="participant-strip"><div className="people-heading"><strong>People</strong>{role !== 'student' && connected && <button onClick={() => connectionRef.current?.muteAllParticipants()}>Mute all</button>}</div>{participants.length === 0 && <small className="no-people">Participants appear after you join.</small>}{participants.map(item => <div className="person" key={item.socketId}><span>{(item.displayName ?? item.username)[0]}</span><div><b>{item.displayName ?? item.username}</b><small>{item.role}{item.handRaised ? ' · ✋ Hand raised' : ''}</small></div>{role !== 'student' && item.id !== user.id && <div className="person-actions"><button onClick={() => connectionRef.current?.muteParticipant(item.id)}>Mute</button><button className="remove" onClick={() => kick(item)}>Remove</button></div>}</div>)}</div>
+          <div className="participant-strip"><div className="people-heading"><strong>People</strong>{role !== 'student' && connected && <button onClick={() => connectionRef.current?.muteAllParticipants()}>Mute all</button>}</div>{participants.length === 0 && <small className="no-people">Participants appear after you join.</small>}{participants.map(item => <div className="person" key={item.socketId}><span>{(item.displayName ?? item.username)[0]}</span><div><b>{item.displayName ?? item.username}</b><small>{item.role}{item.handRaised ? ' · ✋ Hand raised' : ''}</small></div>{role !== 'student' && item.socketId !== localSocketId && <div className="person-actions"><button onClick={() => connectionRef.current?.muteParticipant(item.id)}>Mute</button><button className="remove" onClick={() => kick(item)}>Remove</button></div>}</div>)}</div>
           <div className="chat-feed">{messages.length === 0 ? <div className="blank-state"><span>•••</span><strong>No messages yet</strong><p>Messages and history will appear here.</p></div> : messages.map(item => <div className="chat-message" key={item.messageId}><div><strong>{item.username}</strong><time>{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><p>{item.content}</p></div>)}</div>
           <form className="composer" onSubmit={sendMessage}><input disabled={!connected} value={message} onChange={event => setMessage(event.target.value)} placeholder={connected ? 'Message the classroom…' : 'Join to send a message'} /><button disabled={!connected || !message.trim()} aria-label="Send message">↑</button></form>
         </> : <div className="event-feed">{logs.length === 0 ? <div className="blank-state"><strong>No events captured</strong><p>Connect to begin inspecting events.</p></div> : logs.map(log => <div className="event-row" key={log.id}><span className={log.direction}>{log.direction === 'in' ? '←' : log.direction === 'out' ? '→' : '·'}</span><div><b>{log.event}</b><small>{log.detail}</small></div><time>{log.time}</time></div>)}</div>}

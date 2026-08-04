@@ -439,6 +439,11 @@ export class RoomConnection extends RoomEventEmitter {
     return this.isConnected
   }
 
+  /** Return the transport identity used to match this client in room state. */
+  getSocketId(): string | undefined {
+    return this.socket?.id
+  }
+
   /**
    * v1.2.0: Setup WebRTC peer connection with another participant
    * v1.4.2: Made localStream optional to support receiving-only connections

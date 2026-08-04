@@ -63,6 +63,7 @@
     "harness:dev": "pnpm --dir examples/classroom-harness dev",
     "preharness:build": "pnpm build",
     "harness:build": "pnpm --dir examples/classroom-harness build",
+    "harness:test": "pnpm --dir examples/classroom-harness test:e2e",
     "test:package": "./scripts/test-package.sh",
     "test:integration": "./scripts/test-in-project.sh",
     "prepack": "npm run build",

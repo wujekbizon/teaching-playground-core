@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "pnpm --dir ../.. build && cross-env DEV_AUTH_ENABLED=true playwright test"
   },
   "dependencies": {
     "@teaching-playground/core": "link:../..",
@@ -14,9 +15,11 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.55.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^4.7.0",
+    "cross-env": "^10.0.0",
     "typescript": "^5.8.2",
     "vite": "^7.1.2"
   }
