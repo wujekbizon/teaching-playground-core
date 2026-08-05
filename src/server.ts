@@ -118,7 +118,14 @@ export async function startWebSocketServer(port: number = 3001) {
         res.end(JSON.stringify(body))
       }
       const handleApi = async () => {
-        if (!scheduling || !req.url?.startsWith('/api/')) return false
+        if (!req.url?.startsWith('/api/')) return false
+        if (!scheduling) {
+          respond(503, {
+            code: 'DEV_API_DISABLED',
+            message: 'Development API routes require DEV_AUTH_ENABLED=true on the server',
+          })
+          return true
+        }
         const url = new URL(req.url, 'http://localhost')
         if (url.pathname === '/api/turn' && req.method === 'GET') respond(200, buildTurnConfiguration())
         else if (url.pathname === '/api/rooms' && req.method === 'GET') respond(200, await scheduling.listRooms())
@@ -128,6 +135,12 @@ export async function startWebSocketServer(port: number = 3001) {
           status: url.searchParams.get('status') as any ?? undefined,
           from: url.searchParams.get('from') ?? undefined,
           to: url.searchParams.get('to') ?? undefined,
+          programId: url.searchParams.get('programId') ?? undefined,
+          curriculumId: url.searchParams.get('curriculumId') ?? undefined,
+          termId: url.searchParams.get('termId') ?? undefined,
+          courseId: url.searchParams.get('courseId') ?? undefined,
+          subjectId: url.searchParams.get('subjectId') ?? undefined,
+          cohortId: url.searchParams.get('cohortId') ?? undefined,
         }))
         else if (url.pathname === '/api/reservations' && req.method === 'POST') respond(201, await scheduling.scheduleReservation(await readJson(req) as any))
         else if (url.pathname === '/api/availability' && req.method === 'GET') respond(200, await scheduling.getRoomAvailability({

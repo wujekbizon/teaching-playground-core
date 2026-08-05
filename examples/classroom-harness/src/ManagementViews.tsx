@@ -2,16 +2,26 @@ import { FormEvent, useCallback, useEffect, useState } from 'react'
 
 type Features = { hasVideo: boolean; hasAudio: boolean; hasChat: boolean; hasWhiteboard: boolean; hasScreenShare: boolean }
 type Room = { id: string; name: string; capacity: number; status: string; features: Features }
-type Reservation = { id: string; roomId: string; name: string; teacherId: string; startsAt: string; endsAt: string; timezone: string; capacity: number; status: string }
+type AcademicPath = { programId: string; curriculumId: string; termId: string; courseId: string; subjectId: string; cohortId: string }
+type Reservation = { id: string; roomId: string; name: string; teacherId: string; startsAt: string; endsAt: string; timezone: string; capacity: number; status: string; academicPath?: AcademicPath }
 
 const request = async <T,>(serverUrl: string, path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${serverUrl}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   })
-  const body = await response.json()
-  if (!response.ok) throw new Error(body.message ?? `Request failed (${response.status})`)
-  return body
+  const contentType = response.headers.get('content-type') ?? ''
+  const body = contentType.includes('application/json') ? await response.json() : await response.text()
+  if (!response.ok) {
+    const message = typeof body === 'object' && body && 'message' in body
+      ? String(body.message)
+      : `Request failed (${response.status})${typeof body === 'string' && body ? `: ${body}` : ''}`
+    throw new Error(message)
+  }
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected JSON from ${path}, but received ${contentType || 'an unknown content type'}. Is the DEV_AUTH_ENABLED=true server running?`)
+  }
+  return body as T
 }
 
 export function ManagementViews({ view, setView, serverUrl, onJoinReservation }: {
@@ -33,6 +43,10 @@ export function ManagementViews({ view, setView, serverUrl, onJoinReservation }:
   const [availabilityMessage, setAvailabilityMessage] = useState('Choose an interval and search to select a room.')
   const [searchingAvailability, setSearchingAvailability] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [academicPath, setAcademicPath] = useState<AcademicPath>({
+    programId: 'medical-assistant', curriculumId: 'medical-assistant-2026', termId: 'fall-2026',
+    courseId: 'semester-1', subjectId: 'anatomy', cohortId: 'group-a',
+  })
 
   const refresh = useCallback(async () => {
     setLoading(true); setError('')
@@ -61,13 +75,15 @@ export function ManagementViews({ view, setView, serverUrl, onJoinReservation }:
       const payload = {
         name: lectureName, roomId: selectedRoom, startsAt: new Date(startsAt).toISOString(),
         endsAt: new Date(endsAt).toISOString(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        capacity: roomCapacity,
+        capacity: roomCapacity, academicPath,
       }
       if (editingId) await request(serverUrl, `/api/reservations/${editingId}/reschedule`, { method: 'POST', body: JSON.stringify({ roomId: payload.roomId, startsAt: payload.startsAt, endsAt: payload.endsAt }) })
       else await request(serverUrl, '/api/reservations', { method: 'POST', body: JSON.stringify(payload) })
       setLectureName(''); setEditingId(null); await refresh()
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
   }
+
+  const updateAcademicPath = (key: keyof AcademicPath, value: string) => setAcademicPath(current => ({ ...current, [key]: value }))
 
   const cancel = async (id: string) => {
     try { await request(serverUrl, `/api/reservations/${id}/cancel`, { method: 'POST' }); await refresh() }
@@ -76,6 +92,7 @@ export function ManagementViews({ view, setView, serverUrl, onJoinReservation }:
   const editReservation = (item: Reservation) => {
     setEditingId(item.id); setLectureName(item.name); setSelectedRoom(item.roomId)
     setStartsAt(item.startsAt.slice(0, 16)); setEndsAt(item.endsAt.slice(0, 16)); setAvailableRoomIds(null)
+    if (item.academicPath) setAcademicPath(item.academicPath)
   }
   const toggleMaintenance = async (room: Room) => {
     try { await request(serverUrl, `/api/rooms/${room.id}/maintenance`, { method: 'POST', body: JSON.stringify({ enabled: room.status !== 'maintenance' }) }); await refresh() }
@@ -131,8 +148,8 @@ export function ManagementViews({ view, setView, serverUrl, onJoinReservation }:
           <form className="management-form" onSubmit={createRoom}><h2>Create room</h2><label>Name<input required minLength={3} value={roomName} onChange={event => setRoomName(event.target.value)} /></label><label>Capacity<input required type="number" min="1" value={roomCapacity} onChange={event => setRoomCapacity(Number(event.target.value))} /></label><button className="primary">Create room</button></form>
         </div>
       </> : <div className="management-grid">
-        <section className="catalog"><h2>Upcoming reservations</h2>{reservations.length === 0 ? <div className="management-empty">No lectures scheduled.</div> : reservations.map(item => <article className="reservation-row" key={item.id}><div><strong>{item.name}</strong><small>{new Date(item.startsAt).toLocaleString()} – {new Date(item.endsAt).toLocaleTimeString()}</small></div><span>{rooms.find(room => room.id === item.roomId)?.name ?? item.roomId}</span><span className={`status ${item.status}`}>{item.status}</span>{item.status !== 'cancelled' && <div className="reservation-actions"><button onClick={() => editReservation(item)}>Reschedule</button><button onClick={() => void cancel(item.id)}>Cancel</button>{(item.status === 'open' || item.status === 'in-progress') && <button onClick={() => onJoinReservation?.(item)}>Join live</button>}</div>}</article>)}</section>
-        <form className="management-form" onSubmit={schedule}><h2>{editingId ? 'Reschedule lecture' : 'Schedule lecture'}</h2><div className="schedule-policy">A 15-minute empty-room turnover is required between lectures.</div><label>Subject / name<input required minLength={3} disabled={editingId !== null} value={lectureName} onChange={event => setLectureName(event.target.value)} /></label><label>Starts<input required type="datetime-local" value={startsAt} onChange={event => { setStartsAt(event.target.value); resetAvailability() }} /></label><label>Ends<input required type="datetime-local" value={endsAt} onChange={event => { setEndsAt(event.target.value); resetAvailability() }} /></label><label>Capacity<input required type="number" min="1" disabled={editingId !== null} value={roomCapacity} onChange={event => { setRoomCapacity(Number(event.target.value)); resetAvailability() }} /></label><button type="button" className="secondary availability-button" disabled={searchingAvailability || roomCapacity < 1 || !startsAt || !endsAt} onClick={() => void searchAvailability()}>{searchingAvailability ? 'Searching…' : 'Search available rooms'}</button><div className={`availability-result ${availableRoomIds?.length ? 'success' : ''}`} role="status">{availabilityMessage}</div><label>Available room<select required disabled={availableRoomIds === null || availableRoomIds.length === 0} value={selectedRoom} onChange={event => setSelectedRoom(event.target.value)}><option value="">Select an available room</option>{rooms.filter(room => availableRoomIds?.includes(room.id)).map(room => <option key={room.id} value={room.id}>{room.name} · {room.capacity} seats</option>)}</select></label><button className="primary" disabled={!selectedRoom || !availableRoomIds?.includes(selectedRoom)}>{editingId ? 'Save new time' : 'Schedule lecture'}</button>{editingId && <button type="button" className="secondary" onClick={() => { setEditingId(null); setLectureName(''); resetAvailability() }}>Discard changes</button>}</form>
+        <section className="catalog"><h2>Upcoming reservations</h2>{reservations.length === 0 ? <div className="management-empty">No lectures scheduled.</div> : reservations.map(item => <article className="reservation-row" key={item.id}><div><strong>{item.name}</strong><small>{new Date(item.startsAt).toLocaleString()} – {new Date(item.endsAt).toLocaleTimeString()}</small></div><span>{rooms.find(room => room.id === item.roomId)?.name ?? item.roomId}</span><span>{item.academicPath ? `${item.academicPath.termId} / ${item.academicPath.subjectId} / ${item.academicPath.cohortId}` : 'No academic path'}</span><span className={`status ${item.status}`}>{item.status}</span>{item.status !== 'cancelled' && <div className="reservation-actions"><button onClick={() => editReservation(item)}>Reschedule</button><button onClick={() => void cancel(item.id)}>Cancel</button>{(item.status === 'open' || item.status === 'in-progress') && <button onClick={() => onJoinReservation?.(item)}>Join live</button>}</div>}</article>)}</section>
+        <form className="management-form" onSubmit={schedule}><h2>{editingId ? 'Reschedule lecture' : 'Schedule lecture'}</h2><div className="schedule-policy">A 15-minute empty-room turnover is required between lectures.</div><label>Subject / name<input required minLength={3} disabled={editingId !== null} value={lectureName} onChange={event => setLectureName(event.target.value)} /></label><fieldset className="academic-path" disabled={editingId !== null}><legend>Normalized academic path</legend><label>Program ID<input required value={academicPath.programId} onChange={event => updateAcademicPath('programId', event.target.value)} /></label><label>Curriculum ID<input required value={academicPath.curriculumId} onChange={event => updateAcademicPath('curriculumId', event.target.value)} /></label><label>Term ID<input required value={academicPath.termId} onChange={event => updateAcademicPath('termId', event.target.value)} /></label><label>Course ID<input required value={academicPath.courseId} onChange={event => updateAcademicPath('courseId', event.target.value)} /></label><label>Subject ID<input required value={academicPath.subjectId} onChange={event => updateAcademicPath('subjectId', event.target.value)} /></label><label>Cohort ID<input required value={academicPath.cohortId} onChange={event => updateAcademicPath('cohortId', event.target.value)} /></label></fieldset><label>Starts<input required type="datetime-local" value={startsAt} onChange={event => { setStartsAt(event.target.value); resetAvailability() }} /></label><label>Ends<input required type="datetime-local" value={endsAt} onChange={event => { setEndsAt(event.target.value); resetAvailability() }} /></label><label>Capacity<input required type="number" min="1" disabled={editingId !== null} value={roomCapacity} onChange={event => { setRoomCapacity(Number(event.target.value)); resetAvailability() }} /></label><button type="button" className="secondary availability-button" disabled={searchingAvailability || roomCapacity < 1 || !startsAt || !endsAt} onClick={() => void searchAvailability()}>{searchingAvailability ? 'Searching…' : 'Search available rooms'}</button><div className={`availability-result ${availableRoomIds?.length ? 'success' : ''}`} role="status">{availabilityMessage}</div><label>Available room<select required disabled={availableRoomIds === null || availableRoomIds.length === 0} value={selectedRoom} onChange={event => setSelectedRoom(event.target.value)}><option value="">Select an available room</option>{rooms.filter(room => availableRoomIds?.includes(room.id)).map(room => <option key={room.id} value={room.id}>{room.name} · {room.capacity} seats</option>)}</select></label><button className="primary" disabled={!selectedRoom || !availableRoomIds?.includes(selectedRoom)}>{editingId ? 'Save new time' : 'Schedule lecture'}</button>{editingId && <button type="button" className="secondary" onClick={() => { setEditingId(null); setLectureName(''); resetAvailability() }}>Discard changes</button>}</form>
       </div>}
     </main>
   </div>
