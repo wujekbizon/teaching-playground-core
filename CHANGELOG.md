@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [2.7.2] - 2026-08-05
+
+### Changed
+- Modernized the main `README.md` with current architecture, scheduling/admission flow diagrams, setup examples, harness usage, TURN validation, testing commands, configuration tables, persistence guidance, and documentation links.
+- Bumped package version to 2.7.2 for the README documentation refresh.
+
+
 ## [2.7.1] - 2026-08-05
 
 ### Added
