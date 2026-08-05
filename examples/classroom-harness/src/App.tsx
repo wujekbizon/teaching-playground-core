@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { RoomConnection } from '@teaching-playground/core/room-connection'
 import type { User } from '@teaching-playground/core/user'
+import { ManagementViews } from './ManagementViews'
 
 type Participant = User & {
   userId?: string
@@ -8,6 +9,8 @@ type Participant = User & {
   handRaised?: boolean
   isStreaming?: boolean
 }
+
+type TurnDiagnostics = { enabled: boolean; relayOnly: boolean; expiresAt?: string; rtcConfiguration: RTCConfiguration; diagnostics: string[] }
 
 type LogEntry = {
   id: number
@@ -32,8 +35,11 @@ const stringify = (value: unknown) => {
 }
 
 export default function App() {
+  const [view, setView] = useState<'rooms' | 'schedule' | 'live'>('live')
   const [serverUrl, setServerUrl] = useState('http://localhost:3001')
   const [roomId, setRoomId] = useState('clinical-skills-101')
+  const [reservationId, setReservationId] = useState<string | undefined>()
+  const [reservationLabel, setReservationLabel] = useState<string | undefined>()
   const [token, setToken] = useState('teacher:Dr. Maya Chen')
   const [syncDevelopmentToken, setSyncDevelopmentToken] = useState(true)
   const [name, setName] = useState('Dr. Maya Chen')
@@ -54,6 +60,8 @@ export default function App() {
   const [handRaised, setHandRaised] = useState(false)
   const [notice, setNotice] = useState<{ tone: 'info' | 'error'; text: string } | null>(null)
   const [panel, setPanel] = useState<'chat' | 'events'>('chat')
+  const [turnConfig, setTurnConfig] = useState<TurnDiagnostics | null>(null)
+  const [forceRelay, setForceRelay] = useState(false)
   const connectionRef = useRef<RoomConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -93,6 +101,16 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [notice])
 
+  useEffect(() => {
+    void fetch(`${serverUrl}/api/turn`).then(async response => {
+      if (!response.ok) throw new Error(`TURN configuration request failed: ${response.status}`)
+      const config = await response.json() as TurnDiagnostics
+      setTurnConfig(config)
+      setForceRelay(config.relayOnly)
+      addLog('system', 'turn_configuration', { enabled: config.enabled, relayOnly: config.relayOnly, diagnostics: config.diagnostics })
+    }).catch(error => addLog('system', 'turn_configuration_unavailable', error))
+  }, [addLog, serverUrl])
+
   useEffect(() => () => {
     connectionRef.current?.disconnect()
     localStreamRef.current?.getTracks().forEach(track => track.stop())
@@ -111,7 +129,8 @@ export default function App() {
     if (connectionRef.current) return
     try {
       const stream = withMedia ? await ensureMedia() : null
-      const connection = new RoomConnection(roomId, user, serverUrl, { auth: { token } })
+      const rtcConfiguration = turnConfig ? { ...turnConfig.rtcConfiguration, iceTransportPolicy: forceRelay ? 'relay' : turnConfig.rtcConfiguration.iceTransportPolicy } as RTCConfiguration : undefined
+      const connection = new RoomConnection(roomId, user, serverUrl, { auth: { token }, reservationId, rtcConfiguration })
       connectionRef.current = connection
 
       eventNames.forEach(event => connection.on(event, (payload: unknown) => addLog('in', event, payload)))
@@ -176,7 +195,7 @@ export default function App() {
         setRecording(false)
       })
       connection.connect()
-      addLog('out', 'connect', { roomId, role, serverUrl })
+      addLog('out', 'connect', { roomId, role, serverUrl, relayOnly: forceRelay })
     } catch (error) {
       addLog('system', 'connect_failed', error)
       setNotice({ tone: 'error', text: `Unable to connect: ${stringify(error)}` })
@@ -273,7 +292,19 @@ export default function App() {
     setMessage('')
   }
 
+
+  const inspectRelay = async () => {
+    const pairs = await connectionRef.current?.getSelectedIceCandidatePairs() ?? []
+    const allRelayed = pairs.length > 0 && pairs.every(pair => pair.localCandidateType === 'relay')
+    addLog('system', allRelayed ? 'turn_relay_validated' : 'turn_relay_not_selected', pairs)
+    setNotice({ tone: allRelayed ? 'info' : 'error', text: allRelayed ? 'Selected ICE candidate pairs are relayed.' : 'No selected relay candidate pair detected yet. Check TURN credentials/network.' })
+  }
+
   const participantCount = Math.max(participants.length, connected ? 1 : 0)
+
+  if (view !== 'live') return <ManagementViews view={view} setView={setView} serverUrl={serverUrl} onJoinReservation={reservation => {
+    setRoomId(reservation.roomId); setReservationId(reservation.id); setReservationLabel(`${reservation.name} · ${reservation.status}`); setView('live')
+  }} />
 
   return <div className="app-shell">
     {notice && <div className={`notice ${notice.tone}`} role="status">{notice.text}<button onClick={() => setNotice(null)}>×</button></div>}
@@ -283,6 +314,7 @@ export default function App() {
       <div className="session-code">Room <strong>{roomId}</strong></div>
       <button className="avatar" title={name}>{name.split(' ').map(part => part[0]).slice(0, 2).join('')}</button>
     </header>
+    <nav className="live-navigation" aria-label="Primary navigation"><button onClick={() => setView('rooms')}>Rooms</button><button onClick={() => setView('schedule')}>Schedule</button><button className="active">Live classroom</button></nav>
 
     <main className="workspace">
       <aside className="setup-card">
@@ -291,6 +323,7 @@ export default function App() {
         <p>Test authenticated media and classroom events using the public package API.</p>
         <label>Server URL<input value={serverUrl} onChange={event => setServerUrl(event.target.value)} disabled={connected} /></label>
         <label>Room ID<input value={roomId} onChange={event => setRoomId(event.target.value)} disabled={connected} /></label>
+        {reservationLabel && <div className="auth-hint">Reservation: <code>{reservationLabel}</code><button type="button" disabled={connected} onClick={() => { setReservationId(undefined); setReservationLabel(undefined) }}>Use diagnostic room ID</button></div>}
         <label>Display name<input value={name} onChange={event => {
           const nextName = event.target.value
           setName(nextName)
@@ -305,6 +338,7 @@ export default function App() {
           <label>Auth token<input value={token} onChange={event => { setToken(event.target.value); setSyncDevelopmentToken(false) }} type="password" disabled={connected} /></label>
         </div>
         <div className="auth-hint">The development server trusts the <code>role:name</code> token as the participant identity.<button type="button" disabled={connected} onClick={() => { setToken(`${role}:${name}`); setSyncDevelopmentToken(true) }}>Use display name</button></div>
+        <div className="turn-panel"><strong>TURN relay</strong><span>{turnConfig?.enabled ? 'Configured' : 'Not configured'}</span><label><input type="checkbox" checked={forceRelay} disabled={connected || !turnConfig?.enabled} onChange={event => setForceRelay(event.target.checked)} /> Force relay-only ICE</label>{turnConfig?.expiresAt && <small>Credentials expire {new Date(turnConfig.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>}{turnConfig?.diagnostics.map(item => <small key={item}>{item}</small>)}</div>
         <button className={`primary ${connected ? 'danger' : ''}`} onClick={() => connected ? disconnect() : void connect(true)}>{connected ? 'Leave classroom' : 'Join with camera'}</button>
         {!connected && <button className="secondary" onClick={() => void connect(false)}>Join without media</button>}
         <div className="setup-note"><span>i</span><p>Open a second tab with another role to test peer media and participant controls.</p></div>
@@ -323,6 +357,7 @@ export default function App() {
           <button disabled={!connected} onClick={() => void toggleScreen()} className={sharing ? 'selected' : ''}><span>↗</span>{sharing ? 'Stop sharing' : 'Share screen'}</button>
           {role !== 'student' && <button disabled={!connected || !localStream} onClick={() => void toggleRecording()} className={recording ? 'recording' : ''}><span>●</span>{recording ? `Stop · ${recordingSeconds}s` : 'Record'}</button>}
           <button disabled={!connected} onClick={toggleHand} className={handRaised ? 'selected' : ''}><span>✋</span>{handRaised ? 'Lower hand' : 'Raise hand'}</button>
+          <button disabled={!connected || !turnConfig?.enabled} onClick={() => void inspectRelay()}><span>⇄</span>Validate TURN</button>
         </div>
       </section>
 
