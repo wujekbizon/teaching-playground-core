@@ -61,6 +61,68 @@ export interface Lecture {
 
 export type ReservationStatus = 'scheduled' | 'open' | 'in-progress' | 'completed' | 'cancelled'
 
+export interface ExternalReference {
+  provider: string
+  type: string
+  id: string
+  url?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface AcademicEntity {
+  id: string
+  organizationId: string
+  name: string
+  externalRef?: ExternalReference
+}
+
+export interface Organization extends Omit<AcademicEntity, 'organizationId'> {
+  timezone?: string
+}
+
+export interface AcademicProgram extends AcademicEntity {}
+
+export interface Curriculum extends AcademicEntity {
+  programId: string
+  version?: string
+}
+
+export interface AcademicTerm extends AcademicEntity {
+  programId: string
+  curriculumId: string
+  startsAt: string
+  endsAt: string
+  timezone: string
+}
+
+export interface Course extends AcademicEntity {
+  programId: string
+  curriculumId: string
+}
+
+export interface Subject extends AcademicEntity {
+  programId: string
+  curriculumId: string
+  courseId: string
+}
+
+export interface Cohort extends AcademicEntity {
+  programId: string
+  curriculumId: string
+  termId: string
+  courseId: string
+}
+
+export interface ReservationAcademicPath {
+  programId: string
+  curriculumId: string
+  termId: string
+  courseId: string
+  subjectId: string
+  cohortId: string
+  externalRef?: ExternalReference
+}
+
 export interface LectureReservation extends Omit<Lecture, 'status'> {
   organizationId: string
   startsAt: string
@@ -68,6 +130,7 @@ export interface LectureReservation extends Omit<Lecture, 'status'> {
   timezone: string
   capacity: number
   status: ReservationStatus
+  academicPath?: ReservationAcademicPath
 }
 
 export interface ScheduleLectureOptions {
@@ -81,6 +144,7 @@ export interface ScheduleLectureOptions {
   timezone: string
   capacity: number
   description?: string
+  academicPath?: ReservationAcademicPath
 }
 
 export interface ReservationFilter {
@@ -90,4 +154,10 @@ export interface ReservationFilter {
   status?: ReservationStatus
   from?: string
   to?: string
+  programId?: string
+  curriculumId?: string
+  termId?: string
+  courseId?: string
+  subjectId?: string
+  cohortId?: string
 }

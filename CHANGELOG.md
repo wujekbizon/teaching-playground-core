@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.8.0] - 2026-08-05
+
+### Added
+- Added Phase 2E.0 host-agnostic academic model interfaces for organizations, programs, curricula, terms, courses, subjects, cohorts, and external references.
+- Added optional `academicPath` support on lecture reservations so hosts can map school semesters, subjects, and cohorts into normalized scheduling IDs.
+- Added reservation filters for program, curriculum, term, course, subject, and cohort IDs while preserving organization-scoped query isolation.
+- Added classroom harness fields for creating and inspecting reservations with normalized academic paths.
+- Added reservation coverage for academic-path storage, validation, filtering, and tenant isolation.
+
+### Changed
+- Documented the Phase 2E Option A normalized academic hierarchy and host-owned mapping boundary.
+- Bumped package version to 2.8.0 for the Phase 2E.0 academic scheduling milestone.
+
 ## [2.7.4] - 2026-08-05
 
 ### Added

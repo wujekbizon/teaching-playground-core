@@ -88,6 +88,29 @@ describe('EventManagementSystem reservation scheduling', () => {
     expect(rescheduleRooms.map(room => room.id)).toEqual(['room-a'])
   })
 
+
+  it('stores and filters reservations by normalized academic path inside the organization scope', async () => {
+    const academicPath = {
+      programId: 'medical-assistant', curriculumId: 'medical-assistant-2026', termId: 'fall-2026',
+      courseId: 'semester-1', subjectId: 'anatomy', cohortId: 'group-a',
+      externalRef: { provider: 'wolfmed', type: 'course', id: 'wm-course-123' },
+    }
+    const reservation = await system.scheduleReservation({ ...base, academicPath })
+    await system.scheduleReservation({ ...base, name: 'Physiology', roomId: 'room-b', capacity: 5,
+      startsAt: '2026-09-01T11:15:00.000Z', endsAt: '2026-09-01T12:15:00.000Z',
+      academicPath: { ...academicPath, subjectId: 'physiology', cohortId: 'group-b' } })
+
+    await expect(system.listReservations({ organizationId: 'school-a', termId: 'fall-2026', subjectId: 'anatomy' }))
+      .resolves.toEqual([expect.objectContaining({ id: reservation.id, academicPath })])
+    await expect(system.listReservations({ organizationId: 'school-a', courseId: 'semester-1', cohortId: 'group-b' }))
+      .resolves.toHaveLength(1)
+    await expect(system.listReservations({ organizationId: 'school-b', termId: 'fall-2026' }))
+      .resolves.toHaveLength(0)
+    await expect(system.scheduleReservation({ ...base, roomId: 'room-b', capacity: 5,
+      startsAt: '2026-09-01T12:30:00.000Z', endsAt: '2026-09-01T13:30:00.000Z',
+      academicPath: { ...academicPath, subjectId: '' } })).rejects.toMatchObject({ code: 'EVENT_VALIDATION_FAILED' })
+  })
+
   it('reschedules without self-conflict and releases cancelled intervals', async () => {
     const reservation = await system.scheduleReservation(base)
     const moved = await system.rescheduleReservation(reservation.id, 'school-a', {

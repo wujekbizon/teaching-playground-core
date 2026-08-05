@@ -55,8 +55,8 @@ multi-room live instruction.
 ### Rooms and reservations
 
 - Organization-owned rooms with capacity, status, and media features.
-- Reservation model with `startsAt`, `endsAt`, timezone, capacity, teacher, and
-  lifecycle status.
+- Reservation model with `startsAt`, `endsAt`, timezone, capacity, teacher,
+  lifecycle status, and an optional normalized academic path.
 - Availability search scoped by organization, capacity, status, and interval.
 - Serialized overlap checks for the bundled single-process adapter.
 - Configurable room turnover gap, defaulting to 15 minutes between cohorts.
@@ -139,6 +139,23 @@ sequenceDiagram
   Comms-->>Client: room_state or join_room_error
   Worker->>Comms: clearRoom + unregister after completion grace
 ```
+
+
+### Normalized academic model
+
+Phase 2E uses a host-agnostic academic hierarchy for scheduling:
+`Organization → AcademicProgram → Curriculum → AcademicTerm → Course → Subject → Cohort → LectureReservation`.
+Host applications such as Wolfmed Klasa keep accounts, payments, commercial
+products, exams, and materials outside the engine, then map their records into
+these stable IDs when creating reservations. Schools with different curricula
+must normalize those structures into this model before calling the scheduling
+API; plugin-based reshaping is intentionally deferred until real onboarding
+proves the model too rigid.
+
+Reservations can include `academicPath` with `programId`, `curriculumId`,
+`termId`, `courseId`, `subjectId`, `cohortId`, and an optional neutral
+`externalRef` back to the host record. `listReservations` accepts these IDs as
+filters alongside organization, room, teacher, status, and date range filters.
 
 Key scheduling rules:
 
