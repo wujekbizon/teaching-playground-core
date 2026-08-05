@@ -4,6 +4,7 @@ import { RealTimeCommunicationSystem } from './systems/comms/RealTimeCommunicati
 import type { User } from './interfaces/user.interface'
 import TeachingPlayground from './engine/TeachingPlayground'
 import { SystemError } from './interfaces/errors.interface'
+import { buildTurnConfiguration } from './utils/TurnConfig'
 
 const readJson = (req: import('http').IncomingMessage) => new Promise<Record<string, any>>((resolve, reject) => {
   let body = ''
@@ -119,7 +120,8 @@ export async function startWebSocketServer(port: number = 3001) {
       const handleApi = async () => {
         if (!scheduling || !req.url?.startsWith('/api/')) return false
         const url = new URL(req.url, 'http://localhost')
-        if (url.pathname === '/api/rooms' && req.method === 'GET') respond(200, await scheduling.listRooms())
+        if (url.pathname === '/api/turn' && req.method === 'GET') respond(200, buildTurnConfiguration())
+        else if (url.pathname === '/api/rooms' && req.method === 'GET') respond(200, await scheduling.listRooms())
         else if (url.pathname === '/api/rooms' && req.method === 'POST') respond(201, await scheduling.createRoom(await readJson(req) as any))
         else if (url.pathname === '/api/reservations' && req.method === 'GET') respond(200, await scheduling.listReservations({
           roomId: url.searchParams.get('roomId') ?? undefined,

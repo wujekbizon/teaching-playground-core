@@ -69,6 +69,17 @@ interface StreamState {
   quality: 'low' | 'medium' | 'high'
 }
 
+
+export interface RelayCandidatePair {
+  peerId: string
+  localCandidateType?: string
+  remoteCandidateType?: string
+  currentRoundTripTime?: number
+  availableOutgoingBitrate?: number
+  bytesSent?: number
+  bytesReceived?: number
+}
+
 export interface RoomConnectionOptions {
   auth?: Record<string, unknown>
   rtcConfiguration?: RTCConfiguration
@@ -660,6 +671,33 @@ export class RoomConnection extends RoomEventEmitter {
     this.peerConnections.clear()
     this.remoteStreams.clear()
     this.pendingIceCandidates.clear()
+  }
+
+
+  /**
+   * Inspect selected ICE candidate pairs for TURN relay validation.
+   * A relay-only test should assert every returned localCandidateType is `relay`.
+   */
+  async getSelectedIceCandidatePairs(): Promise<RelayCandidatePair[]> {
+    const pairs: RelayCandidatePair[] = []
+    for (const [peerId, pc] of this.peerConnections) {
+      const stats = await pc.getStats()
+      stats.forEach(report => {
+        if (report.type !== 'candidate-pair' || !report.selected) return
+        const local = stats.get(report.localCandidateId)
+        const remote = stats.get(report.remoteCandidateId)
+        pairs.push({
+          peerId,
+          localCandidateType: local?.candidateType,
+          remoteCandidateType: remote?.candidateType,
+          currentRoundTripTime: report.currentRoundTripTime,
+          availableOutgoingBitrate: report.availableOutgoingBitrate,
+          bytesSent: report.bytesSent,
+          bytesReceived: report.bytesReceived,
+        })
+      })
+    }
+    return pairs
   }
 
   /**

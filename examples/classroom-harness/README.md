@@ -43,3 +43,25 @@ tab, such as `teacher:maya` and `student:alex`.
 The harness sends `RoomConnectionOptions.auth.token`. The default standalone
 server runs in compatibility mode; an authenticated host should validate that
 token through `CommsConfig.identityProvider` with `requireAuthentication: true`.
+
+## TURN relay diagnostics
+
+Phase 2D.5 adds relay-only diagnostics to the live classroom view. Configure the
+standalone development server with host-provided TURN settings before starting
+the harness:
+
+```bash
+DEV_AUTH_ENABLED=true \
+TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349 \
+TURN_USERNAME=demo-user \
+TURN_CREDENTIAL=demo-password \
+TURN_FORCE_RELAY=true \
+pnpm server:dev
+```
+
+For TURN services that support REST-style shared-secret credentials, use
+`TURN_SHARED_SECRET` instead of `TURN_CREDENTIAL`; the server returns a bounded,
+short-lived username/password pair to the browser. The live view shows whether
+TURN is configured, can force `iceTransportPolicy: 'relay'`, and includes a
+**Validate TURN** action that inspects selected ICE candidate pairs after two
+participants negotiate media.

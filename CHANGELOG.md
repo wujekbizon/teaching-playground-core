@@ -1,5 +1,17 @@
 # Changelog
 
+
+## [2.7.0] - 2026-08-04
+
+### Added
+- Added Phase 2D.5 TURN relay configuration support for the development harness, including a safe `/api/turn` endpoint that returns host-provided RTC configuration without exposing shared secrets.
+- Added short-lived TURN credential generation for services that support shared-secret HMAC usernames and bounded TTLs.
+- Added relay-only browser controls and ICE candidate-pair inspection so teachers/students can validate selected media paths through TURN.
+- Added unit coverage for disabled, static-credential, and short-lived TURN configuration modes.
+
+### Changed
+- Bumped package version to 2.7.0 for TURN relay validation tooling.
+
 All notable changes to the Teaching Playground Core package will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

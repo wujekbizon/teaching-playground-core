@@ -22,3 +22,6 @@ export { default as TeachingPlayground } from './engine/TeachingPlayground'
 export { RoomManagementSystem } from './systems/room/RoomManagementSystem'
 export { EventManagementSystem } from './systems/event/EventManagementSystem'
 export { RealTimeCommunicationSystem } from './systems/comms/RealTimeCommunicationSystem'
+
+export { buildTurnConfiguration } from './utils/TurnConfig'
+export type { TurnConfigurationResponse, TurnEnvironment } from './utils/TurnConfig'
