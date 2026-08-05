@@ -95,7 +95,7 @@ validateEnvironment()
 
 export async function startWebSocketServer(port: number = 3001) {
   try {
-    console.log('Starting Teaching Playground WebSocket Server...')
+    console.log('Starting Wolfmed Classroom WebSocket Server...')
     const developmentAuth = process.env.DEV_AUTH_ENABLED === 'true'
     if (developmentAuth && process.env.NODE_ENV === 'production') {
       throw new Error('DEV_AUTH_ENABLED cannot be used in production')
@@ -162,7 +162,7 @@ export async function startWebSocketServer(port: number = 3001) {
         return true
       }
       void handleApi().then(handled => {
-        if (!handled && !res.headersSent) { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('Teaching Playground WebSocket Server') }
+        if (!handled && !res.headersSent) { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('Wolfmed Classroom WebSocket Server') }
       }).catch(error => {
         const systemError = error instanceof SystemError ? error : new SystemError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Request failed')
         if (!res.headersSent) respond(systemError.code === 'RESERVATION_CONFLICT' ? 409 : 400, {

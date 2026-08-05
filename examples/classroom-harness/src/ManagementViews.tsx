@@ -134,7 +134,7 @@ export function ManagementViews({ view, setView, serverUrl, onJoinReservation }:
   const visibleRooms = rooms.filter(room => room.capacity >= capacityFilter)
   return <div className="management-shell">
     <header className="management-header">
-      <div className="brand"><span className="brand-mark">TP</span><div><strong>Teaching Playground</strong><small>Scheduling harness</small></div></div>
+      <div className="brand"><span className="brand-mark">WC</span><div><strong>Wolfmed Classroom</strong><small>Scheduling harness</small></div></div>
       <nav aria-label="Primary navigation"><button className={view === 'rooms' ? 'active' : ''} onClick={() => setView('rooms')}>Rooms</button><button className={view === 'schedule' ? 'active' : ''} onClick={() => setView('schedule')}>Schedule</button><button onClick={() => setView('live')}>Live classroom</button></nav>
       <div className="org-chip"><small>Organization</small><strong>Demo School</strong><span>school-demo · UTC payloads</span></div>
     </header>

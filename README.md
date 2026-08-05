@@ -1,10 +1,10 @@
-# Teaching Playground Core
+# Wolfmed Classroom
 
-A TypeScript package for building realtime virtual classrooms with Socket.IO,
+A TypeScript package powering Wolfmed Classroom realtime virtual classrooms with Socket.IO,
 WebRTC signaling, organization-scoped room scheduling, reservation-aware
 admission, and a diagnostic classroom harness.
 
-Teaching Playground Core is designed to be embedded by a host school portal or
+Wolfmed Classroom is designed to be embedded by a host school portal or
 training platform. The host owns authentication, persistent production storage,
 and deployment infrastructure; this package provides the classroom domain,
 realtime coordination, SDK client, and development tooling needed to validate
