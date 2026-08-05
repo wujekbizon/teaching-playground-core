@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.4] - 2026-08-05
+
+### Added
+- Added `PHASE-2E-OPTION-A-PLAN.md` as a standalone downloadable plan for the normalized academic model direction before Redis/horizontal scaling.
+
+### Changed
+- Bumped package version to 2.7.4 and included the standalone Phase 2E Option A plan in the published package file list.
 
 ## [2.7.2] - 2026-08-05
 
