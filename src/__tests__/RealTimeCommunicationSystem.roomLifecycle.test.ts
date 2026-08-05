@@ -245,10 +245,10 @@ describe('RealTimeCommunicationSystem - Room Lifecycle (v1.4.6)', () => {
       ;(commsSystem as any).updateRoomActivity = jest.fn()
     })
 
-    it('should allow joining room with active lecture', () => {
+    it('should allow joining room with active lecture', async () => {
       commsSystem.registerLecture('lecture-1', 'room-1', 'active')
 
-      ;(commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
+      await (commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
 
       expect(mockSocket.join).toHaveBeenCalledWith('room-1')
       expect(mockSocket.emit).toHaveBeenCalledWith(
@@ -259,10 +259,10 @@ describe('RealTimeCommunicationSystem - Room Lifecycle (v1.4.6)', () => {
       )
     })
 
-    it('should allow joining room with in-progress lecture', () => {
+    it('should allow joining room with in-progress lecture', async () => {
       commsSystem.registerLecture('lecture-1', 'room-1', 'in-progress')
 
-      ;(commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
+      await (commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
 
       expect(mockSocket.join).toHaveBeenCalledWith('room-1')
       expect(mockSocket.emit).toHaveBeenCalledWith(
@@ -273,10 +273,10 @@ describe('RealTimeCommunicationSystem - Room Lifecycle (v1.4.6)', () => {
       )
     })
 
-    it('should deny joining room with completed lecture', () => {
+    it('should deny joining room with completed lecture', async () => {
       commsSystem.registerLecture('lecture-1', 'room-1', 'completed')
 
-      ;(commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
+      await (commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
 
       expect(mockSocket.join).not.toHaveBeenCalled()
       expect(mockSocket.emit).toHaveBeenCalledWith(
@@ -290,10 +290,10 @@ describe('RealTimeCommunicationSystem - Room Lifecycle (v1.4.6)', () => {
       )
     })
 
-    it('should deny joining room with cancelled lecture', () => {
+    it('should deny joining room with cancelled lecture', async () => {
       commsSystem.registerLecture('lecture-1', 'room-1', 'cancelled')
 
-      ;(commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
+      await (commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
 
       expect(mockSocket.join).not.toHaveBeenCalled()
       expect(mockSocket.emit).toHaveBeenCalledWith(
@@ -307,10 +307,10 @@ describe('RealTimeCommunicationSystem - Room Lifecycle (v1.4.6)', () => {
       )
     })
 
-    it('should deny joining room with scheduled lecture', () => {
+    it('should deny joining room with scheduled lecture', async () => {
       commsSystem.registerLecture('lecture-1', 'room-1', 'scheduled')
 
-      ;(commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
+      await (commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
 
       expect(mockSocket.join).not.toHaveBeenCalled()
       expect(mockSocket.emit).toHaveBeenCalledWith(
@@ -324,11 +324,11 @@ describe('RealTimeCommunicationSystem - Room Lifecycle (v1.4.6)', () => {
       )
     })
 
-    it('should log denied entry', () => {
+    it('should log denied entry', async () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation()
       commsSystem.registerLecture('lecture-1', 'room-1', 'completed')
 
-      ;(commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
+      await (commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
 
       expect(consoleSpy).toHaveBeenCalledWith(
         `User ${studentUser.username} denied entry to room room-1 - Lecture status: completed`
@@ -337,9 +337,9 @@ describe('RealTimeCommunicationSystem - Room Lifecycle (v1.4.6)', () => {
       consoleSpy.mockRestore()
     })
 
-    it('should allow joining room with no registered lecture', () => {
+    it('should allow joining room with no registered lecture', async () => {
       // No lecture registered - should allow join (backward compatibility)
-      ;(commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
+      await (commsSystem as any).handleJoinRoom(mockSocket, 'room-1', studentUser)
 
       expect(mockSocket.join).toHaveBeenCalledWith('room-1')
       expect(mockSocket.emit).toHaveBeenCalledWith(
@@ -473,13 +473,13 @@ describe('RealTimeCommunicationSystem - Room Lifecycle (v1.4.6)', () => {
       expect(commsSystem.isRoomAvailable(roomId)).toBe(false)
     })
 
-    it('should prevent entry after lecture completes mid-session', () => {
+    it('should prevent entry after lecture completes mid-session', async () => {
       const lectureId = 'lecture-3'
       const roomId = 'room-3'
 
       // Lecture is active - students can join
       commsSystem.registerLecture(lectureId, roomId, 'active')
-      ;(commsSystem as any).handleJoinRoom(mockSocket, roomId, studentUser)
+      await (commsSystem as any).handleJoinRoom(mockSocket, roomId, studentUser)
       expect(mockSocket.join).toHaveBeenCalledWith(roomId)
 
       // Reset mock
@@ -494,7 +494,7 @@ describe('RealTimeCommunicationSystem - Room Lifecycle (v1.4.6)', () => {
         ...mockSocket,
         id: 'new-socket-456'
       }
-      ;(commsSystem as any).handleJoinRoom(newMockSocket, roomId, {
+      await (commsSystem as any).handleJoinRoom(newMockSocket, roomId, {
         id: 'student-2',
         username: 'latestudent@example.com',
         role: 'student',

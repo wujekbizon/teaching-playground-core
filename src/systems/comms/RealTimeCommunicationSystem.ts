@@ -1,4 +1,4 @@
-import { CommsConfig, SystemError } from '../../interfaces'
+import { CommsConfig, SystemError, TrustedLaunchClaims } from '../../interfaces'
 import { Server as SocketIOServer, Socket } from 'socket.io'
 import { Server as HttpServer } from 'http'
 import { EventEmitter } from 'events'
@@ -80,6 +80,13 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       throw new SystemError(
         'AUTH_CONFIGURATION_INVALID',
         'An identityProvider is required when requireAuthentication is enabled'
+      )
+    }
+
+    if (this.config?.requireLaunchClaims && !this.config.launchClaimVerifier) {
+      throw new SystemError(
+        'LAUNCH_CONFIGURATION_INVALID',
+        'A launchClaimVerifier is required when requireLaunchClaims is enabled'
       )
     }
 
@@ -168,7 +175,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       console.log(`Client connected: ${socket.id}`)
 
       // Room events
-      socket.on('join_room', (data: { roomId: string; reservationId?: string; user?: User }) => {
+      socket.on('join_room', (data: { roomId: string; reservationId?: string; user?: User; launchClaims?: unknown }) => {
         const user = socket.data.user as User | undefined ?? data.user
         if (!user || (this.config?.requireAuthentication && !socket.data.user)) {
           socket.emit('join_room_error', {
@@ -178,7 +185,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
           })
           return
         }
-        this.handleJoinRoom(socket, data.roomId, user, data.reservationId)
+        void this.handleJoinRoom(socket, data.roomId, user, data.reservationId, data.launchClaims)
       })
 
       socket.on('leave_room', (roomId: string) => {
@@ -322,7 +329,30 @@ export class RealTimeCommunicationSystem extends EventEmitter {
     }
   }
 
-  private handleJoinRoom(socket: any, roomId: string, user: User, reservationId?: string) {
+  private async verifyLaunchClaims(socket: any, user: User, roomId: string, reservationId?: string, payloadClaims?: unknown): Promise<TrustedLaunchClaims | null> {
+    if (!this.config?.launchClaimVerifier && !this.config?.requireLaunchClaims) return null
+    const source = this.config.launchClaimSource ?? 'either'
+    const handshakeClaims = socket.handshake?.auth?.launchClaims
+    const claims = source === 'joinPayload' ? payloadClaims : source === 'handshakeAuth' ? handshakeClaims : payloadClaims ?? handshakeClaims
+    const verified = this.config.launchClaimVerifier ? await this.config.launchClaimVerifier({
+      claims, user, roomId, reservationId, auth: socket.handshake?.auth ?? {}, headers: socket.handshake?.headers ?? {},
+    }) : null
+    if (!verified) throw new SystemError('LAUNCH_CLAIMS_REQUIRED', 'A trusted host launch decision is required')
+    const now = Date.now()
+    if (!verified.allowed || verified.organizationId !== user.organizationId || verified.userId !== user.id ||
+        verified.roomId !== roomId || verified.reservationId !== reservationId || (verified.role && verified.role !== user.role)) {
+      throw new SystemError('LAUNCH_CLAIMS_INVALID', 'Trusted launch claims do not match this user, room, reservation, and organization')
+    }
+    const expiresAt = verified.expiresAt ? Date.parse(verified.expiresAt) : undefined
+    const notBefore = verified.notBefore ? Date.parse(verified.notBefore) : undefined
+    if ((expiresAt !== undefined && (!Number.isFinite(expiresAt) || expiresAt <= now)) ||
+        (notBefore !== undefined && (!Number.isFinite(notBefore) || notBefore > now))) {
+      throw new SystemError('LAUNCH_CLAIMS_EXPIRED', 'Trusted launch claims are outside their valid time window')
+    }
+    return verified
+  }
+
+  private async handleJoinRoom(socket: any, roomId: string, user: User, reservationId?: string, launchClaims?: unknown) {
     try {
       // v1.4.6: Validate lecture status before allowing join
       const lectureId = this.roomLectureMap.get(roomId)
@@ -334,6 +364,7 @@ export class RealTimeCommunicationSystem extends EventEmitter {
               message: 'A matching reservation and organization are required', roomId })
             return
           }
+          await this.verifyLaunchClaims(socket, user, roomId, reservationId, launchClaims)
           // Only allow joining if lecture is active or in-progress
           if (lecture.status !== 'open' && lecture.status !== 'active' && lecture.status !== 'in-progress') {
             const statusMessages = {
@@ -420,7 +451,8 @@ export class RealTimeCommunicationSystem extends EventEmitter {
       })
     } catch (error) {
       console.error('Error in handleJoinRoom:', error)
-      socket.emit('error', { message: 'Failed to join room' })
+      const systemError = error instanceof SystemError ? error : new SystemError('ROOM_JOIN_FAILED', 'Failed to join room')
+      socket.emit('join_room_error', { code: systemError.code, message: systemError.message, roomId })
     }
   }
 
