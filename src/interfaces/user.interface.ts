@@ -1,5 +1,7 @@
 export interface User {
   id: string
+  /** Trusted tenant identifier supplied by the host identity provider. */
+  organizationId?: string
   username: string
   role: 'teacher' | 'student' | 'admin'
   email?: string | null

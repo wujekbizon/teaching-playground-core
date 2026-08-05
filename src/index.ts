@@ -12,6 +12,7 @@ export * from './systems/comms/RealTimeCommunicationSystem'
 
 // Export systems
 export * from './systems/event/EventManagementSystem'
+export * from './systems/event/ReservationScheduler'
 
 // Export utils
 export * from './utils/JsonDatabase'
@@ -21,3 +22,6 @@ export { default as TeachingPlayground } from './engine/TeachingPlayground'
 export { RoomManagementSystem } from './systems/room/RoomManagementSystem'
 export { EventManagementSystem } from './systems/event/EventManagementSystem'
 export { RealTimeCommunicationSystem } from './systems/comms/RealTimeCommunicationSystem'
+
+export { buildTurnConfiguration } from './utils/TurnConfig'
+export type { TurnConfigurationResponse, TurnEnvironment } from './utils/TurnConfig'

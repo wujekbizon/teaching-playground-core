@@ -45,6 +45,7 @@ export interface RoomParticipant extends User {
 
 export interface Room {
   id: string
+  organizationId?: string
   name: string
   capacity: number
   status: 'available' | 'occupied' | 'scheduled' | 'maintenance'
@@ -62,6 +63,7 @@ export interface Room {
 }
 
 export interface CreateRoomOptions {
+  organizationId?: string
   name: string
   capacity: number
   features?: Partial<RoomFeatures>
