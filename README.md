@@ -18,6 +18,7 @@
 - [API Documentation](#api-documentation)
 - [Testing](#testing)
 - [Deployment](#deployment)
+- [TURN Relay Configuration](TURN-RELAY.md)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)

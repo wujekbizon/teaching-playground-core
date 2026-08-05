@@ -1,6 +1,15 @@
 # Changelog
 
 
+## [2.7.1] - 2026-08-05
+
+### Added
+- Added `TURN-RELAY.md` with setup, validation, host integration, security, and troubleshooting guidance for Phase 2D.5 TURN relay diagnostics.
+
+### Changed
+- Bumped package version to 2.7.1 and included the TURN relay guide in published package files.
+
+
 ## [2.7.0] - 2026-08-04
 
 ### Added

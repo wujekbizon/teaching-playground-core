@@ -1,6 +1,6 @@
 {
   "name": "@teaching-playground/core",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "description": "A production-ready WebSocket and WebRTC virtual classroom system for real-time online education with video streaming, chat, and lecture management",
   "keywords": [
     "education",
@@ -38,6 +38,7 @@
   "files": [
     "dist",
     "README.md",
+    "TURN-RELAY.md",
     "LICENSE"
   ],
   "repository": {
