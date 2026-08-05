@@ -79,6 +79,11 @@ describe('reservation admission enforcement', () => {
 })
 
 describe('host-owned launch claims', () => {
+  it('rejects requireLaunchClaims configuration without a host verifier', () => {
+    const invalid = new RealTimeCommunicationSystem({ requireLaunchClaims: true })
+    expect(() => invalid.initialize(createServer())).toThrow('A launchClaimVerifier is required when requireLaunchClaims is enabled')
+  })
+
   let server: Server
   let comms: RealTimeCommunicationSystem
   let url: string

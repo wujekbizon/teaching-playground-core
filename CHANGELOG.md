@@ -7,6 +7,7 @@
 - Added runtime enforcement that verified launch claims match the authenticated user, organization, room, reservation, optional role, and validity window before capacity/lifecycle admission succeeds.
 - Added SDK `RoomConnection` support for passing host launch claims with reservation joins.
 - Added admission tests for missing, mismatched, expired, and accepted host launch claims.
+- Added public API and SDK integration coverage for Phase 2E.0 academic reservation filters and Phase 2E.1 launch-claim forwarding.
 
 ### Changed
 - Bumped package version to 2.9.0 for the Phase 2E.1 launch/admission contract milestone.
