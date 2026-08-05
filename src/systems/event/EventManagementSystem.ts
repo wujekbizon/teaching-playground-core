@@ -40,6 +40,23 @@ export class EventManagementSystem {
     return room
   }
 
+  private static validateAcademicPath(path: ScheduleLectureOptions['academicPath']): void {
+    if (!path) return
+    const required = ['programId', 'curriculumId', 'termId', 'courseId', 'subjectId', 'cohortId'] as const
+    for (const key of required) {
+      if (typeof path[key] !== 'string' || path[key].trim().length === 0) {
+        throw new SystemError('EVENT_VALIDATION_FAILED', `academicPath.${key} is required`)
+      }
+    }
+    if (path.externalRef) {
+      for (const key of ['provider', 'type', 'id'] as const) {
+        if (typeof path.externalRef[key] !== 'string' || path.externalRef[key].trim().length === 0) {
+          throw new SystemError('EVENT_VALIDATION_FAILED', `academicPath.externalRef.${key} is required`)
+        }
+      }
+    }
+  }
+
   private async findConflict(candidate: Pick<LectureReservation, 'organizationId' | 'roomId' | 'startsAt' | 'endsAt'>, excludeId?: string) {
     const range = EventManagementSystem.parseRange(candidate.startsAt, candidate.endsAt)
     const reservations = await this.db.find('events', { type: 'lecture', organizationId: candidate.organizationId, roomId: candidate.roomId }) as LectureReservation[]
@@ -61,6 +78,7 @@ export class EventManagementSystem {
       } catch {
         throw new SystemError('EVENT_VALIDATION_FAILED', 'timezone must be a valid IANA timezone name')
       }
+      EventManagementSystem.validateAcademicPath(options.academicPath)
       await this.assertRoomForReservation(options)
       const conflict = await this.findConflict(options)
       if (conflict) throw new SystemError('RESERVATION_CONFLICT', 'The room is already reserved for this interval', { conflict })
@@ -79,11 +97,16 @@ export class EventManagementSystem {
     if (filter.roomId) query.roomId = filter.roomId
     if (filter.teacherId) query.teacherId = filter.teacherId
     if (filter.status) query.status = filter.status
+    const academicFilters = {
+      programId: filter.programId, curriculumId: filter.curriculumId, termId: filter.termId,
+      courseId: filter.courseId, subjectId: filter.subjectId, cohortId: filter.cohortId,
+    }
     const reservations = await this.db.find('events', query) as LectureReservation[]
     const from = filter.from ? Date.parse(filter.from) : Number.NEGATIVE_INFINITY
     const to = filter.to ? Date.parse(filter.to) : Number.POSITIVE_INFINITY
     if (from >= to || Number.isNaN(from) || Number.isNaN(to)) throw new SystemError('INVALID_TIME_RANGE', 'Invalid reservation query range')
-    return reservations.filter(item => Date.parse(item.startsAt) < to && Date.parse(item.endsAt) > from)
+    return reservations.filter(item => Date.parse(item.startsAt) < to && Date.parse(item.endsAt) > from &&
+      Object.entries(academicFilters).every(([key, value]) => value === undefined || item.academicPath?.[key as keyof typeof academicFilters] === value))
   }
 
   async rescheduleReservation(id: string, organizationId: string, updates: { roomId?: string; startsAt?: string; endsAt: string }): Promise<LectureReservation> {
@@ -102,7 +125,7 @@ export class EventManagementSystem {
   }
 
   async updateReservation(id: string, organizationId: string, updates: {
-    name?: string; description?: string; teacherId?: string; capacity?: number; timezone?: string
+    name?: string; description?: string; teacherId?: string; capacity?: number; timezone?: string; academicPath?: ScheduleLectureOptions['academicPath']
   }): Promise<LectureReservation> {
     const existing = await this.db.findOne('events', { id }) as LectureReservation | null
     if (!existing) throw new SystemError('EVENT_NOT_FOUND', `Reservation ${id} not found`)
@@ -112,6 +135,7 @@ export class EventManagementSystem {
       throw new SystemError('EVENT_VALIDATION_FAILED', 'Reservation name must contain between 3 and 100 characters')
     }
     if (updates.capacity !== undefined) await this.assertRoomForReservation({ ...existing, capacity: updates.capacity })
+    EventManagementSystem.validateAcademicPath(updates.academicPath)
     return await this.db.update('events', { id }, { ...updates, metadata: {
       ...existing.metadata, lastModified: new Date().toISOString(),
     } }) as LectureReservation
