@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.10.1] - 2026-08-05
+
+### Changed
+- Expanded the README with developer-facing technical API documentation for engine identity, rooms, reservations, academic paths, attendance APIs, host-owned launch claims, SDK options, and development HTTP endpoints.
+- Bumped package version to 2.10.1 for the Phase 2E documentation consolidation milestone.
+
 ## [2.10.0] - 2026-08-05
 
 ### Added

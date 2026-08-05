@@ -18,8 +18,10 @@ multi-room live instruction.
 - [Scheduling and admission flow](#scheduling-and-admission-flow)
 - [Installation](#installation)
 - [Quick start](#quick-start)
+- [Developer API reference](#developer-api-reference)
 - [Using the SDK client](#using-the-sdk-client)
 - [Development harness](#development-harness)
+- [Development HTTP API](#development-http-api)
 - [TURN relay validation](#turn-relay-validation)
 - [Testing](#testing)
 - [Configuration](#configuration)
@@ -264,6 +266,19 @@ const reservation = await playground.scheduleReservation({
   timezone: 'America/New_York',
   capacity: 20,
   createdBy: 'admin-1',
+  academicPath: {
+    programId: 'medicine',
+    curriculumId: 'md-2026',
+    termId: 'fall-2026',
+    courseId: 'clinical-skills',
+    subjectId: 'patient-communication',
+    cohortId: 'group-a',
+    externalRef: {
+      provider: 'host-sis',
+      type: 'class-section',
+      id: 'section-123',
+    },
+  },
 })
 ```
 
@@ -275,12 +290,165 @@ import { RoomConnection } from '@teaching-playground/core/room-connection'
 const connection = new RoomConnection(room.id, teacherUser, 'https://api.example.com', {
   auth: { token: sessionToken },
   reservationId: reservation.id,
+  launchClaims: hostSignedLaunchToken,
 })
 
 connection.on('connected', () => console.log('Joined classroom'))
 connection.on('join_room_error', error => console.error('Admission denied', error))
 connection.connect()
 ```
+
+## Developer API reference
+
+This README is the temporary technical reference until a dedicated
+documentation site exists. All high-level APIs below live on
+`TeachingPlayground`; lower-level systems are also exported for tests and
+advanced embedding, but hosts should prefer the engine facade unless they are
+supplying their own composition layer.
+
+### Engine and identity
+
+| API | Purpose | Notes |
+|---|---|---|
+| `new TeachingPlayground(config)` | Create the engine facade | Accepts `commsConfig`, scheduler timing, room turnover, and a custom `persistence` adapter |
+| `setCurrentUser(user)` | Set trusted host identity for server-side API calls | `organizationId` scopes room, reservation, and attendance mutations |
+| `initialize(httpServer)` | Attach Socket.IO and start the scheduler | Required for realtime browser joins |
+| `getSchedulerStatus()` | Inspect scheduler health | Useful for development diagnostics and monitoring |
+| `runSchedulerOnce(now?)` | Run one deterministic scheduler tick | Intended for tests, migrations, and controlled jobs |
+
+### Room APIs
+
+| API | Purpose |
+|---|---|
+| `createRoom({ name, capacity, features? })` | Create an organization-owned room |
+| `getRooms()` | List rooms visible to the current organization |
+| `getRoom(roomId)` | Fetch one room |
+| `updateRoom(roomId, updates)` | Update room fields |
+| `deleteRoom(roomId)` | Delete a room |
+| `setRoomMaintenance(roomId, enabled)` | Toggle maintenance status for scheduling/availability checks |
+
+### Reservation and scheduling APIs
+
+| API | Purpose |
+|---|---|
+| `getRoomAvailability({ startsAt, endsAt, capacity?, excludeReservationId? })` | Find rooms that satisfy interval, capacity, maintenance, conflict, and turnover rules |
+| `scheduleReservation(options)` | Create a lecture reservation for the current organization |
+| `listReservations(filter?)` | Query reservations by room, teacher, status, date range, and academic path IDs |
+| `rescheduleLecture(reservationId, { roomId?, startsAt?, endsAt })` | Move an active reservation while preserving conflict checks |
+| `updateReservation(reservationId, updates)` | Update active reservation metadata, capacity, or academic path |
+| `cancelReservation(reservationId, reason?)` | Mark an active reservation as cancelled |
+
+`scheduleReservation` accepts:
+
+```typescript
+{
+  roomId: string
+  name: string
+  teacherId?: string
+  startsAt: string
+  endsAt: string
+  timezone: string
+  capacity: number
+  description?: string
+  createdBy?: string
+  academicPath?: ReservationAcademicPath
+}
+```
+
+`ReservationAcademicPath` must include every normalized ID below when present.
+`externalRef` is optional and exists only to map back to host-owned records.
+
+```typescript
+{
+  programId: string
+  curriculumId: string
+  termId: string
+  courseId: string
+  subjectId: string
+  cohortId: string
+  externalRef?: {
+    provider: string
+    type: string
+    id: string
+    metadata?: Record<string, unknown>
+  }
+}
+```
+
+`listReservations` supports these academic filters: `programId`,
+`curriculumId`, `termId`, `courseId`, `subjectId`, and `cohortId`. It also
+supports `roomId`, `teacherId`, `status`, `from`, and `to`.
+
+### Attendance APIs
+
+Phase 2E.2 adds durable attendance primitives under reservation scope:
+
+| API | Purpose | Important validation |
+|---|---|---|
+| `recordAttendanceEvent({ reservationId, type, userId, role, occurredAt?, capturedBy?, metadata? })` | Store one attendance event such as `joined`, `left`, `present`, or `snapshot` | Reservation must belong to the current organization; timestamp, role, and event type are validated |
+| `captureAttendanceSnapshot({ reservationId, capturedBy, capturedAt?, participants })` | Store a teacher/admin snapshot and write one `snapshot` event per participant | Cancelled reservations reject snapshots; participant user IDs must be unique |
+| `finalizeAttendanceReport(reservationId)` | Build and persist an idempotent report for a completed reservation | Only completed reservations can be finalized; repeated calls return the existing report |
+| `getAttendanceReport(reservationId)` | Read a finalized report or `null` | Reservation must belong to the current organization |
+
+Attendance report totals include unique participant count, role counts,
+underlying attendance event count, and snapshot event count. Participant rows
+include `firstSeenAt`, `lastSeenAt`, `eventCount`, and `snapshotCount`.
+
+```typescript
+await playground.recordAttendanceEvent({
+  reservationId: reservation.id,
+  type: 'joined',
+  userId: 'student-1',
+  role: 'student',
+  occurredAt: '2026-09-01T15:02:00.000Z',
+})
+
+await playground.captureAttendanceSnapshot({
+  reservationId: reservation.id,
+  capturedBy: 'teacher-1',
+  capturedAt: '2026-09-01T15:30:00.000Z',
+  participants: [
+    { userId: 'teacher-1', role: 'teacher', displayName: 'Dr. Rivera' },
+    { userId: 'student-1', role: 'student', displayName: 'Alex' },
+  ],
+})
+
+const report = await playground.finalizeAttendanceReport(reservation.id)
+```
+
+### Host-owned launch claims
+
+When `commsConfig.requireLaunchClaims` is enabled, browser clients must pass
+`launchClaims` in the `RoomConnection` options for reservation-backed joins. The
+host verifier receives the opaque browser payload plus the authenticated join
+context and returns normalized trusted claims.
+
+```typescript
+const playground = new TeachingPlayground({
+  commsConfig: {
+    requireAuthentication: true,
+    identityProvider: verifySocketIdentity,
+    requireLaunchClaims: true,
+    launchClaimVerifier: async ({ claims, identity, roomId, reservationId }) => {
+      const trusted = await verifyHostLaunchToken(claims)
+      return {
+        allowed: trusted.allowed,
+        organizationId: trusted.organizationId,
+        reservationId,
+        roomId,
+        userId: identity.id,
+        role: trusted.role,
+        notBefore: trusted.notBefore,
+        expiresAt: trusted.expiresAt,
+      }
+    },
+  },
+})
+```
+
+The runtime rejects missing, invalid, expired, not-yet-valid, wrong-user,
+wrong-role, wrong-room, wrong-reservation, and wrong-organization claims before
+capacity/lifecycle admission succeeds.
 
 ## Using the SDK client
 
@@ -307,6 +475,16 @@ Common events:
 | `room_cleared`, `room_closed` | Room lifecycle cleanup |
 | `join_room_error` / `connection_error` / `webrtc_error` | Admission, transport, or media errors |
 
+`RoomConnection` constructor options used most often by hosts:
+
+| Option | Purpose |
+|---|---|
+| `auth` | Host credential payload forwarded to the Socket.IO identity provider |
+| `reservationId` | Reservation identity for runtime admission checks |
+| `organizationId` | Optional client-provided organization hint; server identity/claims still decide trust |
+| `launchClaims` | Host-signed or opaque launch decision payload verified by the server when required |
+| `iceServers` / `iceTransportPolicy` | Browser WebRTC ICE settings, including TURN relay-only diagnostics |
+
 ## Development harness
 
 The repo includes a private React/Vite harness in `examples/classroom-harness`.
@@ -331,6 +509,32 @@ Harness views:
 
 Development identity uses simple `role:name` tokens such as `teacher:maya`,
 `student:alex`, or `admin:sam`. Do not enable `DEV_AUTH_ENABLED` in production.
+
+## Development HTTP API
+
+The standalone server exposes management routes only when
+`DEV_AUTH_ENABLED=true`. Without that flag, API paths return a JSON
+`DEV_API_DISABLED` response so the harness can show a setup hint instead of a
+raw JSON parse error.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/rooms?minCapacity=0` | List development rooms |
+| `POST` | `/api/rooms` | Create a room |
+| `POST` | `/api/rooms/:id/maintenance` | Toggle maintenance with `{ "enabled": true }` |
+| `GET` | `/api/reservations` | List reservations with room/teacher/status/date/academic filters |
+| `POST` | `/api/reservations` | Schedule a reservation, including optional `academicPath` |
+| `POST` | `/api/reservations/:id/reschedule` | Reschedule a reservation |
+| `POST` | `/api/reservations/:id/cancel` | Cancel a reservation |
+| `GET` | `/api/availability` | Query room availability by interval/capacity |
+| `POST` | `/api/reservations/:id/attendance/snapshot` | Capture an attendance snapshot |
+| `POST` | `/api/reservations/:id/attendance/report` | Finalize an attendance report |
+| `GET` | `/api/reservations/:id/attendance/report` | Read a finalized attendance report |
+| `GET` | `/api/turn` | Return browser-safe TURN/ICE settings |
+
+These routes are for local validation and the included harness. Production
+hosts should expose their own authenticated API, call `TeachingPlayground`, and
+persist through a production `PersistenceAdapter`.
 
 ## TURN relay validation
 
