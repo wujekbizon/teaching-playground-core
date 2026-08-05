@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.9.1] - 2026-08-05
+
+### Fixed
+- Returned JSON error responses for development API routes when the server is running without `DEV_AUTH_ENABLED=true`, preventing the harness from trying to parse the plain-text server banner as JSON.
+- Made the harness request helper report non-JSON API responses with an actionable setup hint instead of surfacing a raw JSON parse error.
+
+## [2.9.0] - 2026-08-05
+
+### Added
+- Added Phase 2E.1 host-owned launch claim interfaces and verifier configuration for reservation-backed room admission.
+- Added runtime enforcement that verified launch claims match the authenticated user, organization, room, reservation, optional role, and validity window before capacity/lifecycle admission succeeds.
+- Added SDK `RoomConnection` support for passing host launch claims with reservation joins.
+- Added admission tests for missing, mismatched, expired, and accepted host launch claims.
+- Added public API and SDK integration coverage for Phase 2E.0 academic reservation filters and Phase 2E.1 launch-claim forwarding.
+
+### Changed
+- Bumped package version to 2.9.0 for the Phase 2E.1 launch/admission contract milestone.
+
+## [2.8.0] - 2026-08-05
+
+### Added
+- Added Phase 2E.0 host-agnostic academic model interfaces for organizations, programs, curricula, terms, courses, subjects, cohorts, and external references.
+- Added optional `academicPath` support on lecture reservations so hosts can map school semesters, subjects, and cohorts into normalized scheduling IDs.
+- Added reservation filters for program, curriculum, term, course, subject, and cohort IDs while preserving organization-scoped query isolation.
+- Added classroom harness fields for creating and inspecting reservations with normalized academic paths.
+- Added reservation coverage for academic-path storage, validation, filtering, and tenant isolation.
+
+### Changed
+- Documented the Phase 2E Option A normalized academic hierarchy and host-owned mapping boundary.
+- Bumped package version to 2.8.0 for the Phase 2E.0 academic scheduling milestone.
+
 ## [2.7.4] - 2026-08-05
 
 ### Added
