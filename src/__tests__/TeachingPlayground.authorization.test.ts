@@ -28,7 +28,7 @@ describe('TeachingPlayground authorization', () => {
 })
 
 class MemoryPersistence {
-  data: Record<string, any[]> = { rooms: [], events: [] }
+  data: Record<string, any[]> = { rooms: [], events: [], attendance: [], attendance_snapshots: [], attendance_reports: [] }
   async find(collection: string, query: Record<string, any> = {}) {
     return this.data[collection].filter(item => Object.entries(query).every(([key, value]) => item[key] === value))
   }
@@ -68,5 +68,26 @@ describe('TeachingPlayground Phase 2E public API', () => {
     await expect(playground.listReservations({ termId: 'fall-2026', subjectId: 'anatomy' }))
       .resolves.toEqual([expect.objectContaining({ id: reservation.id, organizationId: 'school-a', academicPath })])
     await expect(playground.listReservations({ cohortId: 'group-b' })).resolves.toEqual([])
+  })
+
+  it('captures and reads attendance reports through the public API', async () => {
+    const persistence = new MemoryPersistence()
+    const playground = new TeachingPlayground({ persistence: persistence as any })
+    playground.setCurrentUser({
+      id: 'teacher-1', username: 'teacher@example.com', role: 'teacher', status: 'online', organizationId: 'school-a',
+    })
+    const room = await playground.createRoom({ name: 'Attendance Room', capacity: 30 })
+    const reservation = await playground.scheduleReservation({
+      roomId: room.id, name: 'Attendance lecture', startsAt: '2026-09-01T10:00:00.000Z',
+      endsAt: '2026-09-01T11:00:00.000Z', timezone: 'UTC', capacity: 20,
+    })
+    persistence.data.events[0].status = 'completed'
+
+    await playground.captureAttendanceSnapshot({ reservationId: reservation.id, capturedBy: 'teacher-1',
+      capturedAt: '2026-09-01T10:30:00.000Z', participants: [{ userId: 'student-1', role: 'student' }] })
+    const report = await playground.finalizeAttendanceReport(reservation.id)
+
+    await expect(playground.getAttendanceReport(reservation.id)).resolves.toEqual(report)
+    expect(report.totals).toMatchObject({ participants: 1, students: 1, snapshots: 1 })
   })
 })

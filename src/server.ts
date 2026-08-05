@@ -150,10 +150,23 @@ export async function startWebSocketServer(port: number = 3001) {
         }))
         else {
           const cancelMatch = url.pathname.match(/^\/api\/reservations\/([^/]+)\/cancel$/)
+          const attendanceSnapshotMatch = url.pathname.match(/^\/api\/reservations\/([^/]+)\/attendance\/snapshot$/)
+          const attendanceReportMatch = url.pathname.match(/^\/api\/reservations\/([^/]+)\/attendance\/report$/)
           const rescheduleMatch = url.pathname.match(/^\/api\/reservations\/([^/]+)\/reschedule$/)
           const maintenanceMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/maintenance$/)
           if (cancelMatch && req.method === 'POST') respond(200, await scheduling.cancelReservation(decodeURIComponent(cancelMatch[1])))
           else if (rescheduleMatch && req.method === 'POST') respond(200, await scheduling.rescheduleLecture(decodeURIComponent(rescheduleMatch[1]), await readJson(req) as any))
+          else if (attendanceSnapshotMatch && req.method === 'POST') {
+            const body = await readJson(req)
+            respond(201, await scheduling.captureAttendanceSnapshot({
+              reservationId: decodeURIComponent(attendanceSnapshotMatch[1]),
+              capturedBy: String(body.capturedBy ?? 'dev-admin'),
+              capturedAt: typeof body.capturedAt === 'string' ? body.capturedAt : undefined,
+              participants: Array.isArray(body.participants) ? body.participants : [],
+            }))
+          }
+          else if (attendanceReportMatch && req.method === 'POST') respond(200, await scheduling.finalizeAttendanceReport(decodeURIComponent(attendanceReportMatch[1])))
+          else if (attendanceReportMatch && req.method === 'GET') respond(200, await scheduling.getAttendanceReport(decodeURIComponent(attendanceReportMatch[1])))
           else if (maintenanceMatch && req.method === 'POST') {
             const body = await readJson(req)
             respond(200, await scheduling.setRoomMaintenance(decodeURIComponent(maintenanceMatch[1]), body.enabled === true))

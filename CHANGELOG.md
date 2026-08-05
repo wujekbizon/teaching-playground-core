@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.10.0] - 2026-08-05
+
+### Added
+- Added Phase 2E.2 attendance foundation interfaces for attendance events, teacher snapshots, and finalized attendance reports.
+- Added reservation-scoped attendance event recording, snapshot capture, idempotent report finalization, report lookup, and public `TeachingPlayground` attendance APIs.
+- Added development API endpoints for attendance snapshots and reports under reservation routes.
+- Added attendance tests covering tenant isolation, lifecycle rules, timestamp validation, duplicate snapshot participants, idempotent reports, and public API access.
+
+### Changed
+- Bumped package version to 2.10.0 for the Phase 2E.2 attendance foundation milestone.
+
 ## [2.9.1] - 2026-08-05
 
 ### Fixed

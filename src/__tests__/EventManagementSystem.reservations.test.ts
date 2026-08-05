@@ -2,7 +2,7 @@ import { EventManagementSystem } from '../systems/event/EventManagementSystem'
 import type { PersistenceAdapter } from '../interfaces'
 
 class MemoryPersistence implements PersistenceAdapter {
-  data: Record<string, any[]> = { rooms: [], events: [] }
+  data: Record<string, any[]> = { rooms: [], events: [], attendance: [], attendance_snapshots: [], attendance_reports: [] }
   async find(collection: string, query: Record<string, any> = {}) {
     return this.data[collection].filter(item => Object.entries(query).every(([key, value]) => item[key] === value))
   }
@@ -119,6 +119,46 @@ describe('EventManagementSystem reservation scheduling', () => {
     expect(moved.startsAt).toBe('2026-09-01T12:00:00.000Z')
     await system.cancelReservation(reservation.id, 'school-a', 'Teacher unavailable')
     await expect(system.scheduleReservation(base)).resolves.toMatchObject({ status: 'scheduled' })
+  })
+
+
+  it('captures attendance snapshots and finalizes an idempotent completed lecture report', async () => {
+    const reservation = await system.scheduleReservation(base)
+    persistence.data.events[0].status = 'completed'
+    await system.recordAttendanceEvent({ organizationId: 'school-a', reservationId: reservation.id,
+      type: 'joined', userId: 'teacher-a', role: 'teacher', occurredAt: '2026-09-01T10:00:00.000Z' })
+    const snapshot = await system.captureAttendanceSnapshot({ organizationId: 'school-a', reservationId: reservation.id,
+      capturedBy: 'teacher-a', capturedAt: '2026-09-01T10:30:00.000Z', participants: [
+        { userId: 'teacher-a', role: 'teacher', displayName: 'Teacher A' },
+        { userId: 'student-1', role: 'student', displayName: 'Student One' },
+      ] })
+    expect(snapshot.participants).toHaveLength(2)
+
+    const report = await system.finalizeAttendanceReport('school-a', reservation.id)
+    expect(report).toMatchObject({ organizationId: 'school-a', reservationId: reservation.id,
+      totals: { participants: 2, teachers: 1, students: 1, admins: 0, events: 3, snapshots: 2 } })
+    expect(report.participants).toEqual(expect.arrayContaining([
+      expect.objectContaining({ userId: 'teacher-a', eventCount: 2, snapshotCount: 1 }),
+      expect.objectContaining({ userId: 'student-1', eventCount: 1, snapshotCount: 1 }),
+    ]))
+    await expect(system.finalizeAttendanceReport('school-a', reservation.id)).resolves.toEqual(report)
+  })
+
+  it('enforces attendance tenant, lifecycle, time, and unique snapshot validation', async () => {
+    const reservation = await system.scheduleReservation(base)
+    await expect(system.recordAttendanceEvent({ organizationId: 'school-b', reservationId: reservation.id,
+      type: 'joined', userId: 'student-1', role: 'student' })).rejects.toMatchObject({ code: 'ORGANIZATION_MISMATCH' })
+    await expect(system.recordAttendanceEvent({ organizationId: 'school-a', reservationId: reservation.id,
+      type: 'joined', userId: 'student-1', role: 'student', occurredAt: 'not-a-date' })).rejects.toMatchObject({ code: 'INVALID_TIME_RANGE' })
+    await expect(system.recordAttendanceEvent({ organizationId: 'school-a', reservationId: reservation.id,
+      type: 'teleported' as never, userId: 'student-1', role: 'student' })).rejects.toMatchObject({ code: 'EVENT_VALIDATION_FAILED' })
+    await expect(system.captureAttendanceSnapshot({ organizationId: 'school-a', reservationId: reservation.id,
+      capturedBy: 'teacher-a', participants: [{ userId: 'student-1', role: 'student' }, { userId: 'student-1', role: 'student' }] }))
+      .rejects.toMatchObject({ code: 'EVENT_VALIDATION_FAILED' })
+    await expect(system.finalizeAttendanceReport('school-a', reservation.id)).rejects.toMatchObject({ code: 'ROOM_UNAVAILABLE' })
+    persistence.data.events[0].status = 'cancelled'
+    await expect(system.captureAttendanceSnapshot({ organizationId: 'school-a', reservationId: reservation.id,
+      capturedBy: 'teacher-a', participants: [] })).rejects.toMatchObject({ code: 'ROOM_UNAVAILABLE' })
   })
 
   it('updates reservation details while preserving tenant and capacity rules', async () => {

@@ -64,6 +64,8 @@ multi-room live instruction.
   early-admission and completion-grace windows.
 - Reservation-aware WebSocket admission enforcing trusted host launch claims,
   organization, reservation ID, lifecycle window, and capacity.
+- Attendance foundation for durable attendance events, teacher-triggered
+  snapshots, and finalized reports for completed reservations.
 
 ### Diagnostics and validation
 
@@ -141,6 +143,16 @@ sequenceDiagram
 ```
 
 
+
+
+### Attendance foundation
+
+Phase 2E.2 adds durable attendance primitives under reservation scope. Hosts can
+record attendance events, capture teacher-triggered snapshots of current
+participants, and finalize an idempotent attendance report after a reservation
+is completed. Attendance mutations verify the reservation belongs to the active
+organization, reject invalid timestamps and duplicate snapshot participants, and
+only finalize reports for completed reservations.
 
 ### Host-owned launch claims
 

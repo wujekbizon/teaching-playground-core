@@ -52,6 +52,9 @@ export class JsonDatabase {
   private getInitialData() {
     return {
       events: [],
+      attendance: [],
+      attendance_snapshots: [],
+      attendance_reports: [],
       rooms: [
         {
           id: 'test-room-1',
@@ -69,6 +72,17 @@ export class JsonDatabase {
           updatedAt: new Date().toISOString(),
         }
       ]
+    }
+  }
+
+  private withDefaultCollections(data: any) {
+    return {
+      ...data,
+      events: data.events ?? [],
+      rooms: data.rooms ?? [],
+      attendance: data.attendance ?? [],
+      attendance_snapshots: data.attendance_snapshots ?? [],
+      attendance_reports: data.attendance_reports ?? [],
     }
   }
 
@@ -108,7 +122,7 @@ export class JsonDatabase {
         await this.ensureDataDirectory()
         const filePath = path.join(process.cwd(), 'data', this.dbPath);
         const content = await fs.promises.readFile(filePath, 'utf-8')
-        this.data = JSON.parse(content)
+        this.data = this.withDefaultCollections(JSON.parse(content))
         console.log(`Data loaded successfully from ${filePath}`);
       } else {
         // In browser, use API endpoints and localStorage for participants
@@ -129,7 +143,7 @@ export class JsonDatabase {
           }
         })
         
-        this.data = { rooms, events: [], participants: [] }
+        this.data = this.withDefaultCollections({ rooms, events: [], participants: [] })
         console.log('Data loaded successfully from API/localStorage (browser)');
       }
     } catch (error) {
