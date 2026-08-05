@@ -74,11 +74,9 @@ export class JsonDatabase {
 
   private async ensureDataDirectory() {
     if (this.isServer) {
-      const { existsSync, mkdirSync } = require('fs')
-      const { join } = require('path')
-      const dataDir = join(process.cwd(), 'data')
-      if (!existsSync(dataDir)) {
-        mkdirSync(dataDir, { recursive: true })
+      const dataDir = path.join(process.cwd(), 'data')
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true })
       }
     }
   }
@@ -108,10 +106,8 @@ export class JsonDatabase {
     try {
       if (this.isServer) {
         await this.ensureDataDirectory()
-        const { readFile } = require('fs/promises')
-        const { join } = require('path')
-        const filePath = join(process.cwd(), 'data', this.dbPath);
-        const content = await readFile(filePath, 'utf-8')
+        const filePath = path.join(process.cwd(), 'data', this.dbPath);
+        const content = await fs.promises.readFile(filePath, 'utf-8')
         this.data = JSON.parse(content)
         console.log(`Data loaded successfully from ${filePath}`);
       } else {
@@ -156,10 +152,8 @@ export class JsonDatabase {
       }
 
       if (this.isServer) {
-        const { writeFile } = require('fs/promises')
-        const { join } = require('path')
-        const filePath = join(process.cwd(), 'data', this.dbPath);
-        await writeFile(filePath, JSON.stringify(this.data, null, 2), 'utf-8')
+        const filePath = path.join(process.cwd(), 'data', this.dbPath);
+        await fs.promises.writeFile(filePath, JSON.stringify(this.data, null, 2), 'utf-8')
         console.log(`Data saved successfully to ${filePath}`);
       } else {
         // In browser, save participants to localStorage

@@ -1,5 +1,33 @@
 # Changelog
 
+
+## [2.7.2] - 2026-08-05
+
+### Changed
+- Modernized the main `README.md` with current architecture, scheduling/admission flow diagrams, setup examples, harness usage, TURN validation, testing commands, configuration tables, persistence guidance, and documentation links.
+- Bumped package version to 2.7.2 for the README documentation refresh.
+
+
+## [2.7.1] - 2026-08-05
+
+### Added
+- Added `TURN-RELAY.md` with setup, validation, host integration, security, and troubleshooting guidance for Phase 2D.5 TURN relay diagnostics.
+
+### Changed
+- Bumped package version to 2.7.1 and included the TURN relay guide in published package files.
+
+
+## [2.7.0] - 2026-08-04
+
+### Added
+- Added Phase 2D.5 TURN relay configuration support for the development harness, including a safe `/api/turn` endpoint that returns host-provided RTC configuration without exposing shared secrets.
+- Added short-lived TURN credential generation for services that support shared-secret HMAC usernames and bounded TTLs.
+- Added relay-only browser controls and ICE candidate-pair inspection so teachers/students can validate selected media paths through TURN.
+- Added unit coverage for disabled, static-credential, and short-lived TURN configuration modes.
+
+### Changed
+- Bumped package version to 2.7.0 for TURN relay validation tooling.
+
 All notable changes to the Teaching Playground Core package will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -8,6 +36,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 No unreleased changes.
+
+## [2.6.2] - 2026-08-04
+
+### Changed
+
+- Added a configurable 15-minute default room-turnover gap between consecutive
+  lectures; reservations may be placed before or after an existing lecture when
+  that minimum gap is preserved.
+- Added the turnover policy to availability searches and conflict responses so
+  the schedule form only offers rooms that have enough cohort-change time.
+
+### Fixed
+
+- Disconnect the previous cohort when a lecture completes or its room is
+  cleared, preventing old sockets from receiving the next lecture's events.
+- Added automated coverage for short-turnover rejection, valid before/after
+  scheduling, self-excluding reschedule searches, and completed-room eviction.
+
+## [2.6.1] - 2026-08-04
+
+### Fixed
+
+- Made availability search an explicit required step before a room can be
+  selected or a lecture can be scheduled.
+- Added visible searching, success, empty, validation, and failure feedback so
+  clicking **Search available rooms** always produces a deterministic result.
+- Allowed availability searches during rescheduling to exclude the reservation
+  being edited without weakening the final conflict check.
+- Strengthened browser coverage to assert the availability HTTP response and
+  returned room before enabling scheduling.
+
+## [2.6.0] - 2026-08-04
+
+### Added
+
+- Added the Phase 2D.3 idempotent reservation scheduler with configurable
+  early-admission, completion-grace, and polling intervals.
+- Added restart recovery from persisted reservations and deterministic room
+  claiming when adjacent reservations meet during a grace period.
+- Added reservation-aware WebSocket admission with lifecycle, organization,
+  reservation identity, and capacity enforcement.
+- Added focused scheduler boundary, duplicate-run, restart, adjacent-room-claim,
+  early-admission, tenant, identity, and capacity tests.
+
+### Changed
+
+- The development server now shares one `TeachingPlayground` communication
+  system between reservation scheduling and live Socket.IO admission.
+- The live harness can carry an eligible reservation identity into
+  `RoomConnection`; direct room IDs remain available as a diagnostic mode.
+
+## [2.5.0] - 2026-08-04
+
+### Added
+
+- Added Phase 2D.2 Rooms and Schedule views to the browser harness alongside
+  the existing Live classroom view.
+- Added organization-scoped development HTTP endpoints for room creation,
+  listing, maintenance, availability search, reservation scheduling,
+  rescheduling, listing, and cancellation.
+- Added browser coverage for room creation and filtering, maintenance changes,
+  availability selection, scheduling, rescheduling, overlap feedback, and
+  cancellation, including a full-page workflow screenshot.
+
+### Fixed
+
+- Replaced CommonJS `require` calls in JSON persistence with ESM-compatible
+  filesystem imports so the development scheduling server can persist data.
+- Deferred room communication setup until the communication system is
+  initialized, allowing management-only room creation before WebSocket startup.
+
+## [2.4.0] - 2026-08-04
+
+### Added
+
+- Added Phase 2D.1 organization-scoped rooms and reservation-backed lectures
+  with explicit start/end timestamps, timezone, and reservation capacity.
+- Added availability and date-range queries, conflict-safe scheduling and
+  rescheduling, cancellation, and typed scheduling error contracts.
+- Added concurrent overlap, adjacent interval, capacity, tenant isolation,
+  range query, availability, rescheduling, and cancellation tests.
+
+### Changed
+
+- Future reservations no longer update or depend on `Room.currentLecture`;
+  that field remains available only for the legacy live-lecture lifecycle.
+- Added trusted `organizationId` support to users so public reservation and
+  room operations derive their tenant scope from the current identity.
+
+### Migration
+
+- Added `MIGRATION-v2.4.md` with compatibility and legacy-record guidance.
+
+## [2.3.0] - 2026-08-04
+
+### Added
+
+- Added the Phase 2D.0 multi-room isolation baseline, running three or more
+  concurrent rooms with distinct teachers and students on one backend.
+- Added `pnpm isolation:test` with configurable room and student counts and a
+  JSON report containing per-room admission, interaction, and cleanup latency
+  plus aggregate event-loop delay, heap growth, and duration metrics.
+
+### Validation
+
+- Verified participant state, chat, hand raises, mute-all moderation, stream
+  lifecycle, recording notifications, and cleanup do not leak across rooms.
+- Verified every room remains interactive before isolated cleanup.
 
 ## [2.2.2] - 2026-08-04
 

@@ -1,919 +1,435 @@
 # Teaching Playground Core
 
-**A production-ready WebSocket and WebRTC virtual classroom system for real-time online education with video streaming, chat, and lecture management.**
+A TypeScript package for building realtime virtual classrooms with Socket.IO,
+WebRTC signaling, organization-scoped room scheduling, reservation-aware
+admission, and a diagnostic classroom harness.
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
-[![Socket.IO](https://img.shields.io/badge/Socket.IO-4.8-black.svg)](https://socket.io/)
-[![Tests](https://img.shields.io/badge/Tests-173%2F174-success.svg)]()
-[![Version](https://img.shields.io/badge/Version-1.4.4-blue.svg)]()
+Teaching Playground Core is designed to be embedded by a host school portal or
+training platform. The host owns authentication, persistent production storage,
+and deployment infrastructure; this package provides the classroom domain,
+realtime coordination, SDK client, and development tooling needed to validate
+multi-room live instruction.
 
-## Table of Contents
+## Table of contents
 
-- [Overview](#overview)
-- [Key Features](#key-features)
+- [What is included](#what-is-included)
+- [Current capabilities](#current-capabilities)
 - [Architecture](#architecture)
+- [Scheduling and admission flow](#scheduling-and-admission-flow)
 - [Installation](#installation)
-- [Quick Start](#quick-start)
-- [API Documentation](#api-documentation)
+- [Quick start](#quick-start)
+- [Using the SDK client](#using-the-sdk-client)
+- [Development harness](#development-harness)
+- [TURN relay validation](#turn-relay-validation)
 - [Testing](#testing)
-- [Deployment](#deployment)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
+- [Configuration](#configuration)
+- [Persistence model](#persistence-model)
+- [Operational notes](#operational-notes)
+- [Documentation map](#documentation-map)
+- [Versioning](#versioning)
 - [License](#license)
 
----
+## What is included
 
-## Overview
+| Area | What this package provides | Host responsibility |
+|---|---|---|
+| Realtime classroom | Socket.IO room membership, chat, participant events, moderation controls, recording notifications, WebRTC signaling | Run the HTTP/WebSocket server and provide trusted identity context |
+| Scheduling | Organization-scoped rooms, reservations, availability search, conflict checks, lifecycle scheduler, turnover gap | Decide product UX, school calendars, and production database integration |
+| Browser SDK | `RoomConnection` client for joining, messaging, streaming, screen share, recording, and TURN diagnostics | Integrate the SDK into the host frontend |
+| Development tools | Standalone server, React classroom harness, Playwright specs, load/isolation scripts | Provide production deployment, monitoring, and secrets management |
+| Persistence | JSON development store and adapter interfaces | Use a transactional production database for real scheduling correctness |
 
-**Teaching Playground Core** is a comprehensive, production-ready backend system for building real-time virtual classroom applications. Designed for educational platforms, medical education, corporate training, and any scenario requiring live video instruction and collaboration.
+## Current capabilities
 
-### Current Version: 1.4.4
+### Classroom runtime
 
-This release includes:
-- Real-time WebRTC video/audio streaming
-- Participant management and controls
-- Client-side lecture recording
-- Text chat with history
-- Screen sharing capabilities
-- Optimized database operations
-- Comprehensive test coverage (99.4%)
+- Multi-room Socket.IO isolation keyed by `roomId`.
+- Authenticated join support through a host-provided identity provider.
+- Chat with bounded room history.
+- Participant presence, hand raise/lower, mute-all, mute participant, and kick.
+- Teacher/admin broadcast stream status and browser-side WebRTC signaling.
+- Client-side recording helpers and room-wide recording notifications.
+- Explicit room cleanup that removes ephemeral room state and disconnects old
+  cohort sockets.
 
-### What Makes It Production-Ready
+### Rooms and reservations
 
-- **Type-Safe**: Full TypeScript with strict mode enabled
-- **Tested**: 173/174 tests passing (99.4% coverage)
-- **Performant**: Optimized caching (750x improvement on database operations)
-- **Scalable**: Industry-standard architecture separating persistent and ephemeral data
-- **Documented**: Comprehensive API documentation and examples
-- **Modular**: Clean separation of concerns, easy to extend
+- Organization-owned rooms with capacity, status, and media features.
+- Reservation model with `startsAt`, `endsAt`, timezone, capacity, teacher, and
+  lifecycle status.
+- Availability search scoped by organization, capacity, status, and interval.
+- Serialized overlap checks for the bundled single-process adapter.
+- Configurable room turnover gap, defaulting to 15 minutes between cohorts.
+- Scheduler transitions for `scheduled → open → in-progress → completed` with
+  early-admission and completion-grace windows.
+- Reservation-aware WebSocket admission enforcing organization, reservation ID,
+  lifecycle window, and capacity.
 
-### Use Cases
+### Diagnostics and validation
 
-- **Education**: Virtual classrooms, online lectures, tutoring sessions
-- **Medical Training**: Clinical case discussions, OSCE simulations, grand rounds
-- **Corporate**: Training sessions, webinars, team meetings
-- **Tutoring**: One-on-one or small group instruction
-- **Any application requiring**: Real-time video, interactive chat, and lecture management
-
----
-
-## Key Features
-
-### Real-Time Communication
-
-**WebRTC Video/Audio Streaming**
-- Peer-to-peer high-quality video and audio
-- Support for multiple simultaneous participants
-- Adaptive quality levels (low, medium, high)
-- Automatic ICE candidate exchange for NAT traversal
-
-**WebSocket Messaging**
-- Instant chat with message history (100 messages per room)
-- Real-time participant presence (join/leave notifications)
-- Room-wide broadcasts
-- Rate limiting (5 messages per 10 seconds per user)
-
-**Screen Sharing**
-- Teacher screen sharing with full resolution support
-- Share specific application windows or entire screen
-- Works seamlessly with video streams
-
-### Participant Management (v1.3.1)
-
-**Teacher Controls**
-- Mute all participants
-- Mute individual participants
-- Kick participants from rooms
-- Permission-based access control
-
-**Student Features**
-- Raise hand for questions
-- Lower hand when done
-- Self-controlled mute/unmute (when permitted)
-- Real-time status indicators
-
-### Recording (v1.4.0)
-
-**Client-Side Lecture Recording**
-- Record screen share or camera
-- MediaRecorder API with automatic format detection
-- Configurable video bitrate
-- Download recordings as WebM
-- Broadcasting recording status to participants
-- Duration tracking
-
-### Classroom Management
-
-**Virtual Rooms**
-- Create customizable classrooms with capacity limits
-- Configurable features (video, audio, chat, whiteboard, screen share)
-- Room status tracking (available, occupied, scheduled, maintenance)
-- Associate lectures with rooms
-
-**Lecture Scheduling**
-- Full lifecycle management (scheduled → in-progress → completed → cancelled)
-- Teacher authorization and ownership
-- Date range queries
-- Validation with Zod schemas
-
-### Data & Performance (v1.4.3-v1.4.4)
-
-**Optimized Database Operations**
-- In-memory caching (750x performance improvement)
-- Singleton pattern for consistency
-- Mutex-protected atomic operations
-- Simplified schema (events + rooms only)
-
-**Industry-Standard Architecture**
-- Persistent data in database (lectures, rooms, configuration)
-- Ephemeral data in WebSocket memory (active participants, streams, messages)
-- Single source of truth for participant state
-
-### Security & Validation
-
-- Role-based access control (teacher, student, admin)
-- Lecture ownership validation
-- Runtime validation with Zod schemas
-- Permission checks for streaming and controls
-- Comprehensive error handling with error codes
-
----
+- React classroom harness with **Rooms**, **Schedule**, and **Live classroom**
+  views.
+- Development HTTP management endpoints under `DEV_AUTH_ENABLED=true`.
+- Multi-room isolation script for participant/chat/moderation/stream cleanup
+  checks.
+- TURN relay diagnostics with static or short-lived credentials and selected ICE
+  candidate-pair inspection.
 
 ## Architecture
 
-### System Design
+```mermaid
+flowchart LR
+  HostPortal[Host school portal] -->|trusted user + org| TeachingPlayground
+  HostPortal -->|RoomConnection SDK| Browser[Teacher / student browsers]
 
-Following best practices from Zoom, Google Meet, and Microsoft Teams:
+  TeachingPlayground --> Rooms[RoomManagementSystem]
+  TeachingPlayground --> Events[EventManagementSystem]
+  TeachingPlayground --> Scheduler[ReservationScheduler]
+  TeachingPlayground --> Comms[RealTimeCommunicationSystem]
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                  Teaching Playground Engine                     │
-│           (Orchestrates all systems and user sessions)          │
-└──────────────────┬──────────────────────────────────────────────┘
-                   │
-    ┌──────────────┼──────────────────┬──────────────────┐
-    │              │                  │                  │
-┌───▼────┐  ┌──────▼──────┐    ┌──────▼──────┐    ┌──────▼──────┐
-│  Room  │  │    Event    │    │    Comms    │    │    Data     │
-│  Mgmt  │  │    Mgmt     │    │    System   │    │    Mgmt     │
-└───┬────┘  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
-    │              │                  │                  │
-    │              │          ┌───────┴────────┐         │
-    │              │          │                │         │
-    └──────────────┴──────────┤  IN-MEMORY     ├─────────┘
-                              │  (WebSocket)   │
-                              │                │
-                              │ • Participants │
-                              │ • Streams      │
-                              │ • Messages     │
-                              └────────────────┘
-                                       │
-                               ┌───────▼────────┐
-                               │  PERSISTENT    │
-                               │  (Database)    │
-                               │                │
-                               │ • Lectures     │
-                               │ • Rooms        │
-                               │ • Config       │
-                               └────────────────┘
+  Rooms --> Store[(PersistenceAdapter)]
+  Events --> Store
+  Scheduler --> Events
+  Scheduler --> Comms
+  Browser <-->|Socket.IO + WebRTC signaling| Comms
+  Browser <-->|media via P2P / TURN| Browser
 ```
 
-### Core Components
+The high-level engine is `TeachingPlayground`. It composes durable room/event
+operations with realtime classroom state and starts the reservation scheduler
+when the server is initialized.
 
-**TeachingPlayground Engine** (`src/engine/TeachingPlayground.ts`)
-- Main orchestrator coordinating all systems
-- User session management
-- Unified API for classroom operations
-- Authorization checks
-- System health monitoring
+```typescript
+import { createServer } from 'http'
+import { TeachingPlayground } from '@teaching-playground/core'
 
-**Room Management System** (`src/systems/room/RoomManagementSystem.ts`)
-- Virtual classroom CRUD operations
-- Room status and capacity tracking
-- Lecture assignments
-- Permission management
+const server = createServer()
+const playground = new TeachingPlayground({
+  commsConfig: {
+    requireAuthentication: true,
+    identityProvider: async ({ auth }) => validateToken(auth.token),
+  },
+})
 
-**Event Management System** (`src/systems/event/EventManagementSystem.ts`)
-- Lecture scheduling and lifecycle
-- Status transitions and validation
-- Teacher authorization
-- Date range queries
+playground.setCurrentUser(currentAdminUser)
+playground.initialize(server)
+server.listen(3001)
+```
 
-**Real-Time Communication System** (`src/systems/comms/RealTimeCommunicationSystem.ts`)
-- WebSocket server (Socket.IO)
-- In-memory participant management
-- Message history (100 messages/room)
-- WebRTC signaling (offer/answer/ICE)
-- Automatic cleanup (30-minute inactivity)
-- Graceful shutdown with client notifications
-- v1.3.1: Participant control events (mute, kick, hand raise)
-- v1.4.0: Recording status broadcasting
-- v1.4.4: Enhanced user_joined events with userId
+## Scheduling and admission flow
 
-**RoomConnection Service** (`src/services/RoomConnection.ts`)
-- Client-side Socket.IO wrapper
-- Auto-reconnection (up to 5 attempts)
-- Event emitter pattern
-- WebRTC peer connection management
-- Stream handling (local and remote)
-- v1.4.0: Recording methods (start, stop, duration tracking)
+```mermaid
+sequenceDiagram
+  participant Admin as Admin / scheduler UI
+  participant API as TeachingPlayground API
+  participant Events as EventManagementSystem
+  participant Worker as ReservationScheduler
+  participant Comms as RealTimeCommunicationSystem
+  participant Client as RoomConnection client
 
-**JsonDatabase Utility** (`src/utils/JsonDatabase.ts`)
-- File-based development database
-- Singleton pattern with mutex protection
-- Collections: events, rooms
-- v1.4.3: Optimized caching (750x performance improvement)
-- v1.4.4: Simplified schema (removed unused participants array)
+  Admin->>API: getRoomAvailability(startsAt, endsAt, capacity)
+  API->>Events: organization-scoped availability query
+  Events-->>API: available rooms
+  Admin->>API: scheduleReservation(roomId, interval)
+  API->>Events: validate org, capacity, turnover, conflict
+  Events-->>API: reservation scheduled
+  Worker->>Events: runOnce / interval tick
+  Worker->>Comms: register or update lecture claim
+  Client->>Comms: join_room(roomId, reservationId, auth)
+  Comms-->>Client: room_state or join_room_error
+  Worker->>Comms: clearRoom + unregister after completion grace
+```
 
----
+Key scheduling rules:
+
+- Calendar intervals are represented as `startsAt`/`endsAt` ISO timestamps.
+- Active reservations in the same room cannot overlap.
+- By default, another lecture may start only after the previous lecture has a
+  15-minute turnover gap.
+- The scheduler opens admission before the start time, marks the lecture
+  in-progress at start, and completes it after the configured grace period.
+- When a room is cleared, connected participants are removed from room memory and
+  force-disconnected from the Socket.IO server.
 
 ## Installation
 
-### Prerequisites
-
-- Node.js 18 or higher
-- pnpm (recommended) or npm
-- Git
-
-### Install as Dependency
-
 ```bash
-npm install @teaching-playground/core
-# or
 pnpm add @teaching-playground/core
-# or
-yarn add @teaching-playground/core
 ```
 
-### Clone for Development
+Peer dependency:
 
 ```bash
-git clone https://github.com/yourusername/teaching-playground-core.git
-cd teaching-playground-core
-pnpm install
-pnpm build
+pnpm add typescript
 ```
 
----
+The package publishes ESM output and TypeScript declarations from `dist`.
 
-## Quick Start
+## Quick start
 
-### 1. Start the WebSocket Server
-
-```typescript
-import { startWebSocketServer } from '@teaching-playground/core';
-
-const PORT = process.env.PORT || 3001;
-await startWebSocketServer(PORT);
-
-console.log(`Server running on port ${PORT}`);
-```
-
-### 2. Initialize Teaching Playground
+### 1. Create an authenticated playground
 
 ```typescript
-import TeachingPlayground from '@teaching-playground/core';
+import { createServer } from 'http'
+import { TeachingPlayground } from '@teaching-playground/core'
 
+const server = createServer()
 const playground = new TeachingPlayground({
-  roomConfig: {},
   commsConfig: {
-    allowedOrigins: 'http://localhost:3000'
+    allowedOrigins: ['https://school.example.com'],
+    requireAuthentication: true,
+    identityProvider: async ({ auth }) => {
+      const user = await verifySession(auth.token)
+      return user
+    },
   },
-  eventConfig: {},
-  dataConfig: {},
-});
+})
 
-// When using the facade as the Socket.IO host, initialize it with your HTTP server.
-playground.initialize(httpServer);
+playground.setCurrentUser({
+  id: 'admin-1',
+  username: 'admin',
+  displayName: 'School Admin',
+  organizationId: 'school-demo',
+  role: 'admin',
+  status: 'online',
+})
+
+playground.initialize(server)
+server.listen(3001)
 ```
 
-### 3. Set Current User
+### 2. Create a room and reserve it
 
 ```typescript
-const teacher = {
-  id: 'teacher_001',
-  username: 'dr_smith',
-  role: 'teacher' as const,
-  email: 'smith@university.edu',
-  displayName: 'Dr. John Smith',
-  status: 'online' as const,
-};
-
-playground.setCurrentUser(teacher);
-```
-
-### 4. Create a Classroom
-
-```typescript
-const classroom = await playground.createClassroom({
-  name: 'Biology 101 - Spring 2025',
-  capacity: 30,
+const room = await playground.createRoom({
+  name: 'Clinical Skills Lab',
+  capacity: 24,
   features: {
-    hasVideo: true,
-    hasAudio: true,
-    hasChat: true,
-    hasWhiteboard: true,
-    hasScreenShare: true,
-  }
-});
+    video: true,
+    audio: true,
+    chat: true,
+    whiteboard: false,
+    screenShare: true,
+  },
+})
+
+const reservation = await playground.scheduleReservation({
+  roomId: room.id,
+  name: 'Patient communication workshop',
+  teacherId: 'teacher-1',
+  startsAt: '2026-09-01T15:00:00.000Z',
+  endsAt: '2026-09-01T16:00:00.000Z',
+  timezone: 'America/New_York',
+  capacity: 20,
+  createdBy: 'admin-1',
+})
 ```
 
-### 5. Schedule a Lecture
+### 3. Join from the browser
 
 ```typescript
-const lecture = await playground.scheduleLecture({
-  name: 'Introduction to Cell Biology',
-  date: new Date('2025-02-15T10:00:00').toISOString(),
-  roomId: classroom.id,
-  description: 'Learn about cell structure and function',
-  maxParticipants: 30,
-});
+import { RoomConnection } from '@teaching-playground/core/room-connection'
+
+const connection = new RoomConnection(room.id, teacherUser, 'https://api.example.com', {
+  auth: { token: sessionToken },
+  reservationId: reservation.id,
+})
+
+connection.on('connected', () => console.log('Joined classroom'))
+connection.on('join_room_error', error => console.error('Admission denied', error))
+connection.connect()
 ```
 
-### 6. Student Connects to Room
+## Using the SDK client
+
+`RoomConnection` is the browser-facing SDK entry point.
 
 ```typescript
-import { RoomConnection } from '@teaching-playground/core';
-
-const student = {
-  id: 'student_001',
-  username: 'alice',
-  role: 'student' as const,
-  email: 'alice@student.edu',
-  status: 'online' as const,
-};
-
-const connection = new RoomConnection(
-  classroom.id,
-  student,
-  'ws://localhost:3001',
-  { auth: { token: sessionToken } }
-);
-
-// Event listeners
-connection.on('connected', () => {
-  console.log('Connected to classroom');
-});
-
-connection.on('user_joined', ({ userId, username }) => {
-  console.log(`${username} joined (userId: ${userId})`);
-});
-
-connection.on('message_received', (message) => {
-  console.log(`${message.sender.username}: ${message.message}`);
-});
-
-// Connect
-connection.connect();
-
-// Send message
-connection.sendMessage('Hello everyone!');
+const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+await connection.startStream(stream)
+connection.sendMessage('Welcome everyone')
+connection.raiseHand()
+connection.muteAllParticipants() // teacher/admin only
 ```
 
-### 7. Start Streaming (Teacher)
+Common events:
 
-```typescript
-// Get user media
-const stream = await navigator.mediaDevices.getUserMedia({
-  video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-  audio: true,
-});
+| Event | Purpose |
+|---|---|
+| `connected` | Emitted after server admission and `room_state` receipt |
+| `room_state` | Current stream and participant snapshot |
+| `message_received` / `message_history` | Chat messages |
+| `user_joined` / `user_left` | Participant presence updates |
+| `remote_stream_added` / `remote_stream_removed` | WebRTC remote media lifecycle |
+| `mute_all`, `muted_by_teacher`, `kicked_from_room` | Moderation events |
+| `room_cleared`, `room_closed` | Room lifecycle cleanup |
+| `join_room_error` / `connection_error` / `webrtc_error` | Admission, transport, or media errors |
 
-// Start streaming
-await connection.startStream(stream, 'high');
-```
+## Development harness
 
-## Browser Classroom Harness
-
-An internal React/Vite harness lives in `examples/classroom-harness`. It uses
-only the public `@teaching-playground/core` API and is intended for real-browser
-validation of camera/microphone permissions, multi-tab WebRTC, chat, participant
-controls, screen sharing, recording, and lifecycle cleanup.
+The repo includes a private React/Vite harness in `examples/classroom-harness`.
+It exercises the public package APIs and development HTTP endpoints.
 
 ```bash
-# Terminal 1: standalone Socket.IO server with development test identities
+pnpm install
 DEV_AUTH_ENABLED=true pnpm server:dev
-
-# Terminal 2: install the example once, then run it
-pnpm --dir examples/classroom-harness install
 pnpm harness:dev
 ```
 
-`harness:dev` builds the core package before starting Vite. This is required
-because the example consumes the repository through its browser-safe
-`room-connection` package entry point in `dist`, just like an installed
-application does.
+Open `http://localhost:5173`.
 
-To run the repeatable one-teacher/ten-student browser simulation, install
-Chromium once and execute the harness test from the repository root:
+Harness views:
 
-```bash
-pnpm --dir examples/classroom-harness exec playwright install chromium
-pnpm harness:test
-```
+- **Rooms** — create rooms, filter by capacity, toggle maintenance, and inspect
+  catalog state.
+- **Schedule** — search available rooms, schedule/reschedule/cancel lectures,
+  view conflicts, and join eligible reservations.
+- **Live classroom** — join a reservation or diagnostic room, test chat,
+  participant controls, media, recording, screen share, and TURN diagnostics.
 
-The simulation verifies concurrent admission, participant state, chat delivery,
-hand raising, mute-all and individual mute controls, participant removal, and
-uncaught browser errors across eleven isolated browser contexts.
+Development identity uses simple `role:name` tokens such as `teacher:maya`,
+`student:alex`, or `admin:sam`. Do not enable `DEV_AUTH_ENABLED` in production.
 
-For backend capacity validation, run the lightweight classroom simulator. It
-starts an isolated server, connects one teacher plus the requested number of
-students, and reports admission latency, fan-out latency, disconnect cleanup,
-event-loop delay, and heap growth:
+## TURN relay validation
+
+TURN configuration is host-provided. The standalone development server exposes a
+browser-safe `/api/turn` endpoint only in development auth mode.
 
 ```bash
-pnpm load:test --students 140
+DEV_AUTH_ENABLED=true \
+TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349 \
+TURN_USERNAME=school-demo \
+TURN_CREDENTIAL='replace-with-provider-password' \
+TURN_FORCE_RELAY=true \
+pnpm server:dev
 ```
 
-For Phase 2C mixed validation, run eleven real browser sessions together with
-130 lightweight students in the same 141-participant room:
-
-```bash
-pnpm mixed:test
-```
-
-This explicit, resource-intensive scenario checks browser participant state,
-bidirectional chat, hand-raise and mute-all fan-out, disconnect cleanup, and
-uncaught page errors. See [`LOAD-TESTING.md`](LOAD-TESTING.md) for configuration
-and scope limitations.
-
-Open `http://localhost:5173` in two tabs, choose different names/roles, and join
-the same room. The Events panel records received and emitted classroom events to
-make negotiation and cleanup problems reproducible. For protected deployments,
-provide a real token and configure the server's `identityProvider`; the harness
-passes the token through the Socket.IO handshake.
-
-Development tokens use `role:name` (for example, `teacher:maya` and
-`student:alex`). Development authentication is rejected when `NODE_ENV` is
-`production`.
-
-### 8. Record Lecture (v1.4.0)
-
-```typescript
-// Start recording
-await connection.startRecording(screenShareStream);
-
-// Stop recording
-connection.stopRecording();
-
-// Handle recording blob
-connection.on('recording_stopped', ({ blob, duration }) => {
-  // Download or upload recording
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `lecture-${Date.now()}.webm`;
-  a.click();
-  URL.revokeObjectURL(url);
-});
-```
-
-### 9. Participant Controls (v1.3.1)
-
-```typescript
-// Teacher mutes all students
-connection.muteAllParticipants();
-
-// Teacher mutes specific student
-connection.muteParticipant(studentId);
-
-// Teacher kicks participant
-connection.kickParticipant(studentId, 'Disruptive behavior');
-
-// Student raises hand
-connection.raiseHand();
-
-// Student lowers hand
-connection.lowerHand();
-
-// Events
-connection.on('muted_by_teacher', ({ reason }) => {
-  console.log(`Muted by teacher: ${reason}`);
-});
-
-connection.on('hand_raised', ({ userId, username }) => {
-  console.log(`${username} raised their hand`);
-});
-```
-
----
-
-## API Documentation
-
-For the prioritized multi-school room catalog, reservation scheduler, harness
-UI, TURN, and horizontal-scaling work, see the
-[`Production Classroom and Scheduling Plan`](PRODUCT-IMPLEMENTATION-PLAN.md).
-
-### TeachingPlayground Engine
-
-#### Constructor
-
-```typescript
-new TeachingPlayground(config: TeachingPlaygroundConfig)
-```
-
-`TeachingPlaygroundConfig.persistence` accepts a `PersistenceAdapter`, allowing a
-host application to replace the default JSON store without changing room or
-lecture APIs. `commsConfig.identityProvider` resolves server-trusted socket
-identity from handshake authentication data. Set `requireAuthentication: true`
-for protected deployments; startup fails if no identity provider is supplied.
-`commsConfig.socketAdapter` accepts a Socket.IO-compatible adapter constructor
-when room broadcasts need to span multiple processes.
-
-```typescript
-const playground = new TeachingPlayground({
-  persistence: postgresAdapter,
-  commsConfig: {
-    requireAuthentication: true,
-    identityProvider: async ({ auth }) => verifySessionToken(String(auth.token)),
-  },
-});
-```
-
-#### Methods
-
-**User Management**
-```typescript
-setCurrentUser(user: User | TeacherProfile | AdminProfile): void
-getCurrentUser(): User | TeacherProfile | AdminProfile | undefined
-```
-
-**Classroom Management**
-```typescript
-createClassroom(options: {
-  name: string;
-  capacity: number;
-  features?: RoomFeatures;
-}): Room
-```
-
-**Lecture Management**
-```typescript
-scheduleLecture(options: EventOptions): Promise<Lecture>
-getTeacherLectures(filters?: LectureFilters): Promise<Lecture[]>
-updateLecture(lectureId: string, updates: Partial<Lecture>): Promise<Lecture>
-cancelLecture(lectureId: string): Promise<void>
-getLectureDetails(lectureId: string): Promise<Lecture>
-```
-
-**System Monitoring**
-```typescript
-getSystemStatus(): SystemStatus
-```
-
-### RoomConnection
-
-#### Constructor
-
-```typescript
-new RoomConnection(
-  roomId: string,
-  user: User,
-  serverUrl: string,
-  options?: {
-    auth?: Record<string, unknown>;
-    rtcConfiguration?: RTCConfiguration;
-  }
-)
-```
-
-Use `rtcConfiguration.iceServers` to provide production STUN/TURN servers. The
-default remains public STUN-only for local development.
-
-#### Methods
-
-**Connection**
-```typescript
-connect(): void
-disconnect(): void
-getConnectionStatus(): boolean
-```
-
-**Messaging**
-```typescript
-sendMessage(content: string): void
-getMessageHistory(): RoomMessage[]
-```
-
-**Streaming**
-```typescript
-startStream(stream: MediaStream, quality?: 'low' | 'medium' | 'high'): Promise<boolean>
-stopStream(): void
-getCurrentStream(): StreamState | null
-```
-
-**Recording (v1.4.0)**
-```typescript
-startRecording(stream: MediaStream, options?: RecordingOptions): Promise<void>
-stopRecording(): Promise<void>
-isRecording(): boolean
-getRecordingDuration(): number
-```
-
-**Participant Controls (v1.3.1)**
-```typescript
-muteAllParticipants(): void
-muteParticipant(userId: string): void
-kickParticipant(userId: string, reason?: string): void
-raiseHand(): void
-lowerHand(): void
-```
-
-#### Events
-
-```typescript
-// Connection
-connection.on('connected', () => void)
-connection.on('disconnected', () => void)
-
-// Messaging
-connection.on('message_received', (message: RoomMessage) => void)
-
-// Streaming
-connection.on('stream_started', ({ userId, quality }) => void)
-connection.on('stream_stopped', ({ userId }) => void)
-
-// Participants
-connection.on('user_joined', ({ userId, username, socketId, role }) => void)
-connection.on('user_left', ({ userId }) => void)
-
-// WebRTC
-connection.on('stream_added', ({ peerId, stream }) => void)
-connection.on('stream_removed', (peerId) => void)
-
-// Recording (v1.4.0)
-connection.on('recording_started', ({ teacherId, timestamp }) => void)
-connection.on('recording_stopped', ({ blob, duration, size }) => void)
-connection.on('lecture_recording_started', ({ teacherId, timestamp }) => void)
-connection.on('lecture_recording_stopped', ({ teacherId, duration }) => void)
-
-// Participant Controls (v1.3.1)
-connection.on('muted_by_teacher', ({ requestedBy, reason }) => void)
-connection.on('mute_all', ({ requestedBy }) => void)
-connection.on('kicked_from_room', ({ roomId, reason, kickedBy }) => void)
-connection.on('hand_raised', ({ userId, username }) => void)
-connection.on('hand_lowered', ({ userId }) => void)
-
-// System
-connection.on('error', (error: Error) => void)
-connection.on('reconnecting', (attempt: number) => void)
-```
-
-### Data Types
-
-**User**
-```typescript
-interface User {
-  id: string;
-  username: string;
-  role: 'teacher' | 'student' | 'admin';
-  email?: string;
-  displayName?: string;
-  status: 'online' | 'offline' | 'away';
-}
-```
-
-**Room**
-```typescript
-interface Room {
-  id: string;
-  name: string;
-  capacity: number;
-  status: 'available' | 'occupied' | 'scheduled' | 'maintenance';
-  features: RoomFeatures;
-  currentLecture?: Lecture;
-  createdAt: string;
-  updatedAt: string;
-}
-```
-
-**Lecture**
-```typescript
-interface Lecture {
-  id: string;
-  name: string;
-  date: string;
-  roomId: string;
-  teacherId: string;
-  description?: string;
-  maxParticipants?: number;
-  type: 'lecture';
-  status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
-  createdAt: string;
-  updatedAt: string;
-}
-```
-
----
+For production-style short-lived credentials, use `TURN_SHARED_SECRET` instead
+of `TURN_CREDENTIAL`. See [TURN-RELAY.md](TURN-RELAY.md) for full setup,
+security guidance, and relay-only validation steps.
 
 ## Testing
 
-### Test Coverage
-
-- **Total Tests**: 174
-- **Passing**: 173 (99.4%)
-- **Test Suites**: 11 passing
-
-### Run Tests
+Run the core Jest suite:
 
 ```bash
-# Run all tests
-pnpm test
-
-# Run in watch mode
-pnpm test:watch
-
-# Generate coverage report
-pnpm test:coverage
+pnpm test --runInBand
 ```
 
-### Test Organization
+Build TypeScript:
 
-- `RoomConnection.test.ts` - Connection and messaging tests
-- `RoomConnection.recording.test.ts` - Recording functionality tests
-- `RoomConnection.participantControls.test.ts` - Mute, kick, hand raise tests
-- `RealTimeCommunicationSystem.test.ts` - WebSocket server tests
-- `RealTimeCommunicationSystem.recording.test.ts` - Recording notification tests
-- `RealTimeCommunicationSystem.participantControls.test.ts` - Server-side control tests
-- `JsonDatabase.caching.test.ts` - Database optimization tests
-- `Hotfix.v1.4.1-v1.4.2.test.ts` - Critical bug fix verification
-- `Hotfix.v1.4.4-userId.test.ts` - userId field bug fix tests
-
----
-
-## Deployment
-
-### Environment Variables
-
-```env
-# Server Configuration
-PORT=3001
-NODE_ENV=production
-
-# WebSocket Configuration
-NEXT_PUBLIC_WS_URL=https://app.yourdomain.com
-
-# CORS Origins
-ALLOWED_ORIGINS=https://app.yourdomain.com,https://www.yourdomain.com
-
-# Database (if using external DB)
-DATABASE_URL=postgresql://user:pass@localhost:5432/teaching
-
-# WebRTC Configuration
-STUN_SERVER_1=stun:stun.l.google.com:19302
-STUN_SERVER_2=stun:stun1.l.google.com:19302
-
-# Optional: TURN servers for NAT traversal
-TURN_SERVER_URL=turn:turn.yourdomain.com:3478
-TURN_USERNAME=username
-TURN_CREDENTIAL=credential
-
-# Logging
-LOG_LEVEL=info
-```
-
-### Docker Deployment
-
-```dockerfile
-FROM node:18-alpine
-
-WORKDIR /app
-
-COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
-
-COPY . .
-RUN pnpm build
-
-EXPOSE 3001
-
-CMD ["pnpm", "server"]
-```
-
-Build and run:
 ```bash
-docker build -t teaching-playground-core .
-docker run -p 3001:3001 -e NODE_ENV=production teaching-playground-core
+pnpm build
 ```
 
-### Production Checklist
+Lint source and scripts:
 
-- [ ] Set `NODE_ENV=production`
-- [ ] Configure production database
-- [ ] Set up proper CORS origins
-- [ ] Enable HTTPS for WebSocket connections
-- [ ] Configure TURN servers for NAT traversal
-- [ ] Set up monitoring and logging
-- [ ] Implement rate limiting (already included)
-- [ ] Configure backup strategy
-- [ ] Set up CI/CD pipeline
-- [ ] Enable error tracking (Sentry, etc.)
+```bash
+pnpm lint
+```
 
----
+Run browser harness E2E tests:
 
-## Roadmap
+```bash
+pnpm --dir examples/classroom-harness test:e2e
+```
 
-For detailed roadmap and planned features, see [ROADMAP-NEXT.md](./ROADMAP-NEXT.md).
+Run multi-room isolation validation:
 
-### Completed (v1.4.4)
+```bash
+pnpm isolation:test
+```
 
-- Real-time WebRTC video/audio streaming
-- Screen sharing
-- Text chat with history
-- Participant controls (mute, kick, hand raise)
-- Client-side lecture recording
-- Optimized database caching
-- Comprehensive test suite
-- Production-ready architecture
+Run TURN diagnostics E2E with host-provided TURN settings:
 
-### Planned (v1.5.0+)
+```bash
+CI=1 \
+TURN_URLS=turn:turn.example.test:3478 \
+TURN_USERNAME=demo \
+TURN_CREDENTIAL=secret \
+TURN_FORCE_RELAY=true \
+pnpm --dir examples/classroom-harness test:e2e --grep "TURN relay diagnostics"
+```
 
-**Breakout Rooms**
-- Small group discussions
-- Teacher rotation between rooms
-- Help request queue
-- Role assignment within groups
-- Timer with automatic return
+## Configuration
 
-**Advanced Participant Management**
-- Spotlight mode for presenters
-- Waiting room
-- Granular permissions
-- Polling and quick assessments
-- Focus mode for exams
+### Engine configuration
 
-**Medical Education Features**
-- Observation mode (silent assessment)
-- OSCE station automation
-- Clinical case distribution
-- Standardized patient management
+`TeachingPlayground` accepts configuration for realtime communication,
+scheduler timing, room turnover, and host-provided persistence.
 
-See [ROADMAP-NEXT.md](./ROADMAP-NEXT.md) for comprehensive feature planning.
+Important scheduler defaults:
 
----
+| Setting | Default | Purpose |
+|---|---:|---|
+| `earlyAdmissionMs` | 10 minutes | How early participants can enter before `startsAt` |
+| `completionGraceMs` | 5 minutes | How long a completed lecture remains claimable before cleanup |
+| `schedulerIntervalMs` | 15 seconds | Interval worker cadence |
+| `roomTurnoverMs` | 15 minutes | Required empty-room gap between consecutive reservations |
 
-## Contributing
+### Development server environment
 
-Contributions are welcome! Please follow these guidelines:
+| Variable | Purpose |
+|---|---|
+| `PORT` | HTTP/WebSocket port, default `3001` |
+| `ALLOWED_ORIGINS` | Comma-separated browser origins for Socket.IO/CORS |
+| `NEXT_PUBLIC_WS_URL` | Optional origin fallback for development |
+| `DEV_AUTH_ENABLED` | Enables development management APIs and `role:name` auth |
+| `TURN_URLS` | Comma-separated TURN URLs |
+| `TURN_USERNAME` / `TURN_CREDENTIAL` | Static TURN credentials |
+| `TURN_SHARED_SECRET` / `TURN_TTL_SECONDS` | Short-lived TURN credential mode |
+| `TURN_FORCE_RELAY` | Defaults harness to relay-only ICE when true |
 
-### Development Workflow
+## Persistence model
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests (`pnpm test`)
-5. Build (`pnpm build`)
-6. Commit (`git commit -m "feat: add amazing feature"`)
-7. Push (`git push origin feature/amazing-feature`)
-8. Create a Pull Request
+```mermaid
+flowchart TB
+  Durable[Durable scheduling data] --> DB[(Production database)]
+  Durable --> Rooms[Organizations / rooms / reservations / audit]
+  Runtime[Ephemeral classroom state] --> Memory[Single-process memory]
+  Runtime --> Presence[participants / sockets / hand state]
+  Runtime --> Media[stream state / WebRTC signaling]
+  Memory -.future multi-instance.-> Redis[(Redis adapter + shared presence)]
+```
 
-### Commit Message Format
+The bundled JSON database is a development adapter. Production deployments
+should use a transactional database for organizations, rooms, reservations, and
+audit history. Conflict detection and reservation insertion must happen in one
+transaction in production.
 
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
+Redis is not required for multiple rooms on one backend instance. Add Redis and
+a Socket.IO Redis adapter only when running multiple backend instances that must
+share live classroom state.
 
-- `feat:` New feature
-- `fix:` Bug fix
-- `docs:` Documentation changes
-- `refactor:` Code refactoring
-- `test:` Test changes
-- `chore:` Build/tooling changes
+## Operational notes
 
-### Code Standards
+- Scope every durable query and mutation by trusted `organizationId`.
+- Treat direct room-ID joins as diagnostics; production joins should carry a
+  reservation/live-session identity.
+- Keep TURN secrets server-side and prefer short-lived credentials.
+- Use sticky sessions or compatible WebSocket routing when scaling horizontally.
+- Monitor WebSocket connections, active rooms, scheduler heartbeat, event-loop
+  delay, memory, database health, Redis health, and TURN reachability.
+- Local load numbers are regression baselines, not production capacity promises.
 
-- TypeScript with strict mode
-- 2 spaces indentation
-- ES modules only
-- JSDoc for public methods
-- Error handling with SystemError
-- Comprehensive test coverage
+## Documentation map
 
----
+- [PRODUCT-IMPLEMENTATION-PLAN.md](PRODUCT-IMPLEMENTATION-PLAN.md) — production
+  classroom and scheduling delivery plan.
+- [TURN-RELAY.md](TURN-RELAY.md) — TURN setup, relay-only validation, and
+  troubleshooting.
+- [LOAD-TESTING.md](LOAD-TESTING.md) — load and isolation validation notes.
+- [MIGRATION-v2.4.md](MIGRATION-v2.4.md) — reservation model migration notes.
+- [MIGRATION-v2.6.md](MIGRATION-v2.6.md) — scheduler/admission migration notes.
+- [examples/classroom-harness/README.md](examples/classroom-harness/README.md) —
+  harness-specific usage.
+
+## Versioning
+
+This package follows semantic versioning. Backwards-compatible capabilities use
+minor versions; fixes and documentation updates use patch versions. See
+[CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 
-This project is privately licensed. All rights reserved.
-
-For licensing inquiries, please contact the repository owner.
-
----
-
-## Support
-
-For questions, issues, or feature requests:
-
-- **Issues**: [GitHub Issues](https://github.com/wujekbizon/teaching-playground-core)
-- **Email**: grzegorz.wolfinger@gmail.com
-
----
-
-## Acknowledgments
-
-- Socket.IO team for excellent WebSocket library
-- TypeScript team for amazing tooling
-- Zod for runtime validation
-- All contributors to this project
-
----
-
-**Version 1.4.4** | Built for real-time education | Production-ready since 2025
+MIT
