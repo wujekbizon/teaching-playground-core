@@ -309,7 +309,7 @@ export default function App() {
   return <div className="app-shell">
     {notice && <div className={`notice ${notice.tone}`} role="status">{notice.text}<button onClick={() => setNotice(null)}>×</button></div>}
     <header className="topbar">
-      <div className="brand"><span className="brand-mark">TP</span><div><strong>Teaching Playground</strong><small>Classroom harness</small></div></div>
+      <div className="brand"><span className="brand-mark">WC</span><div><strong>Wolfmed Classroom</strong><small>Classroom harness</small></div></div>
       <div className={`connection-pill ${connected ? 'online' : ''}`}><span />{connected ? 'Live session' : 'Not connected'}</div>
       <div className="session-code">Room <strong>{roomId}</strong></div>
       <button className="avatar" title={name}>{name.split(' ').map(part => part[0]).slice(0, 2).join('')}</button>

@@ -1,5 +1,5 @@
 import { SystemError, ErrorCode } from '../../interfaces/errors.interface'
-import { EventConfig, Lecture, LectureReservation, EventOptions, PersistenceAdapter, ReservationFilter, ScheduleLectureOptions } from '../../interfaces'
+import { AttendanceEvent, AttendanceReport, AttendanceReportParticipant, AttendanceSnapshot, CaptureAttendanceSnapshotOptions, EventConfig, Lecture, LectureReservation, EventOptions, PersistenceAdapter, RecordAttendanceEventOptions, ReservationFilter, ScheduleLectureOptions } from '../../interfaces'
 import { CreateLectureSchema, UpdateLectureSchema } from '../../interfaces/schema'
 import { JsonDatabase } from '../../utils/JsonDatabase'
 import { RealTimeCommunicationSystem } from '../comms/RealTimeCommunicationSystem'
@@ -40,6 +40,50 @@ export class EventManagementSystem {
     return room
   }
 
+  private static validateAcademicPath(path: ScheduleLectureOptions['academicPath']): void {
+    if (!path) return
+    const required = ['programId', 'curriculumId', 'termId', 'courseId', 'subjectId', 'cohortId'] as const
+    for (const key of required) {
+      if (typeof path[key] !== 'string' || path[key].trim().length === 0) {
+        throw new SystemError('EVENT_VALIDATION_FAILED', `academicPath.${key} is required`)
+      }
+    }
+    if (path.externalRef) {
+      for (const key of ['provider', 'type', 'id'] as const) {
+        if (typeof path.externalRef[key] !== 'string' || path.externalRef[key].trim().length === 0) {
+          throw new SystemError('EVENT_VALIDATION_FAILED', `academicPath.externalRef.${key} is required`)
+        }
+      }
+    }
+  }
+
+
+  private static parseOptionalInstant(value: string | undefined, field: string): string {
+    const timestamp = value ?? new Date().toISOString()
+    if (!Number.isFinite(Date.parse(timestamp))) throw new SystemError('INVALID_TIME_RANGE', `${field} must be a valid ISO timestamp`)
+    return timestamp
+  }
+
+  private static validateParticipantRef(participant: { userId: string; role: string }): void {
+    if (participant.userId.trim().length === 0) throw new SystemError('EVENT_VALIDATION_FAILED', 'participant.userId is required')
+    if (participant.role !== 'teacher' && participant.role !== 'student' && participant.role !== 'admin') {
+      throw new SystemError('EVENT_VALIDATION_FAILED', 'participant.role is invalid')
+    }
+  }
+
+  private static validateAttendanceEventType(type: string): void {
+    if (type !== 'joined' && type !== 'left' && type !== 'present' && type !== 'snapshot') {
+      throw new SystemError('EVENT_VALIDATION_FAILED', 'attendance type is invalid')
+    }
+  }
+
+  private async requireReservation(reservationId: string, organizationId: string): Promise<LectureReservation> {
+    const reservation = await this.db.findOne('events', { id: reservationId }) as LectureReservation | null
+    if (!reservation) throw new SystemError('EVENT_NOT_FOUND', `Reservation ${reservationId} not found`)
+    if (reservation.organizationId !== organizationId) throw new SystemError('ORGANIZATION_MISMATCH', 'Reservation belongs to another organization')
+    return reservation
+  }
+
   private async findConflict(candidate: Pick<LectureReservation, 'organizationId' | 'roomId' | 'startsAt' | 'endsAt'>, excludeId?: string) {
     const range = EventManagementSystem.parseRange(candidate.startsAt, candidate.endsAt)
     const reservations = await this.db.find('events', { type: 'lecture', organizationId: candidate.organizationId, roomId: candidate.roomId }) as LectureReservation[]
@@ -61,6 +105,7 @@ export class EventManagementSystem {
       } catch {
         throw new SystemError('EVENT_VALIDATION_FAILED', 'timezone must be a valid IANA timezone name')
       }
+      EventManagementSystem.validateAcademicPath(options.academicPath)
       await this.assertRoomForReservation(options)
       const conflict = await this.findConflict(options)
       if (conflict) throw new SystemError('RESERVATION_CONFLICT', 'The room is already reserved for this interval', { conflict })
@@ -79,11 +124,16 @@ export class EventManagementSystem {
     if (filter.roomId) query.roomId = filter.roomId
     if (filter.teacherId) query.teacherId = filter.teacherId
     if (filter.status) query.status = filter.status
+    const academicFilters = {
+      programId: filter.programId, curriculumId: filter.curriculumId, termId: filter.termId,
+      courseId: filter.courseId, subjectId: filter.subjectId, cohortId: filter.cohortId,
+    }
     const reservations = await this.db.find('events', query) as LectureReservation[]
     const from = filter.from ? Date.parse(filter.from) : Number.NEGATIVE_INFINITY
     const to = filter.to ? Date.parse(filter.to) : Number.POSITIVE_INFINITY
     if (from >= to || Number.isNaN(from) || Number.isNaN(to)) throw new SystemError('INVALID_TIME_RANGE', 'Invalid reservation query range')
-    return reservations.filter(item => Date.parse(item.startsAt) < to && Date.parse(item.endsAt) > from)
+    return reservations.filter(item => Date.parse(item.startsAt) < to && Date.parse(item.endsAt) > from &&
+      Object.entries(academicFilters).every(([key, value]) => value === undefined || item.academicPath?.[key as keyof typeof academicFilters] === value))
   }
 
   async rescheduleReservation(id: string, organizationId: string, updates: { roomId?: string; startsAt?: string; endsAt: string }): Promise<LectureReservation> {
@@ -102,7 +152,7 @@ export class EventManagementSystem {
   }
 
   async updateReservation(id: string, organizationId: string, updates: {
-    name?: string; description?: string; teacherId?: string; capacity?: number; timezone?: string
+    name?: string; description?: string; teacherId?: string; capacity?: number; timezone?: string; academicPath?: ScheduleLectureOptions['academicPath']
   }): Promise<LectureReservation> {
     const existing = await this.db.findOne('events', { id }) as LectureReservation | null
     if (!existing) throw new SystemError('EVENT_NOT_FOUND', `Reservation ${id} not found`)
@@ -112,9 +162,112 @@ export class EventManagementSystem {
       throw new SystemError('EVENT_VALIDATION_FAILED', 'Reservation name must contain between 3 and 100 characters')
     }
     if (updates.capacity !== undefined) await this.assertRoomForReservation({ ...existing, capacity: updates.capacity })
+    EventManagementSystem.validateAcademicPath(updates.academicPath)
     return await this.db.update('events', { id }, { ...updates, metadata: {
       ...existing.metadata, lastModified: new Date().toISOString(),
     } }) as LectureReservation
+  }
+
+
+  async recordAttendanceEvent(options: RecordAttendanceEventOptions): Promise<AttendanceEvent> {
+    await this.requireReservation(options.reservationId, options.organizationId)
+    EventManagementSystem.validateParticipantRef(options)
+    EventManagementSystem.validateAttendanceEventType(options.type)
+    const occurredAt = EventManagementSystem.parseOptionalInstant(options.occurredAt, 'occurredAt')
+    const event: AttendanceEvent = {
+      id: `attendance_${randomUUID()}`,
+      organizationId: options.organizationId,
+      reservationId: options.reservationId,
+      type: options.type,
+      userId: options.userId,
+      role: options.role,
+      occurredAt,
+      capturedBy: options.capturedBy,
+      metadata: options.metadata,
+    }
+    await this.db.insert('attendance', event)
+    return event
+  }
+
+  async captureAttendanceSnapshot(options: CaptureAttendanceSnapshotOptions): Promise<AttendanceSnapshot> {
+    const reservation = await this.requireReservation(options.reservationId, options.organizationId)
+    if (reservation.status === 'cancelled') throw new SystemError('ROOM_UNAVAILABLE', 'Cancelled reservations cannot capture attendance')
+    if (options.capturedBy.trim().length === 0) throw new SystemError('EVENT_VALIDATION_FAILED', 'capturedBy is required')
+    const seen = new Set<string>()
+    const participants = options.participants.map(participant => {
+      EventManagementSystem.validateParticipantRef(participant)
+      if (seen.has(participant.userId)) throw new SystemError('EVENT_VALIDATION_FAILED', 'Attendance snapshot participants must be unique')
+      seen.add(participant.userId)
+      return participant
+    })
+    const capturedAt = EventManagementSystem.parseOptionalInstant(options.capturedAt, 'capturedAt')
+    const snapshot: AttendanceSnapshot = {
+      id: `attendance_snapshot_${randomUUID()}`,
+      organizationId: options.organizationId,
+      reservationId: options.reservationId,
+      capturedBy: options.capturedBy,
+      capturedAt,
+      participants,
+    }
+    await this.db.insert('attendance_snapshots', snapshot)
+    for (const participant of participants) {
+      await this.recordAttendanceEvent({
+        organizationId: options.organizationId,
+        reservationId: options.reservationId,
+        type: 'snapshot',
+        userId: participant.userId,
+        role: participant.role,
+        occurredAt: capturedAt,
+        capturedBy: options.capturedBy,
+        metadata: { snapshotId: snapshot.id, displayName: participant.displayName },
+      })
+    }
+    return snapshot
+  }
+
+  async finalizeAttendanceReport(organizationId: string, reservationId: string): Promise<AttendanceReport> {
+    const reservation = await this.requireReservation(reservationId, organizationId)
+    if (reservation.status !== 'completed') throw new SystemError('ROOM_UNAVAILABLE', 'Attendance reports can only be finalized for completed reservations')
+    const existing = await this.db.findOne('attendance_reports', { organizationId, reservationId }) as AttendanceReport | null
+    if (existing) return existing
+    const events = await this.db.find('attendance', { organizationId, reservationId }) as AttendanceEvent[]
+    const byUser = new Map<string, AttendanceReportParticipant>()
+    for (const event of events.sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt))) {
+      const current = byUser.get(event.userId)
+      if (!current) {
+        byUser.set(event.userId, { userId: event.userId, role: event.role, firstSeenAt: event.occurredAt,
+          lastSeenAt: event.occurredAt, eventCount: 1, snapshotCount: event.type === 'snapshot' ? 1 : 0 })
+      } else {
+        current.lastSeenAt = event.occurredAt
+        current.eventCount += 1
+        if (event.type === 'snapshot') current.snapshotCount += 1
+      }
+    }
+    const participants = [...byUser.values()]
+    const report: AttendanceReport = {
+      id: `attendance_report_${randomUUID()}`,
+      organizationId,
+      reservationId,
+      finalizedAt: new Date().toISOString(),
+      lectureStartsAt: reservation.startsAt,
+      lectureEndsAt: reservation.endsAt,
+      participants,
+      totals: {
+        participants: participants.length,
+        students: participants.filter(item => item.role === 'student').length,
+        teachers: participants.filter(item => item.role === 'teacher').length,
+        admins: participants.filter(item => item.role === 'admin').length,
+        events: events.length,
+        snapshots: events.filter(item => item.type === 'snapshot').length,
+      },
+    }
+    await this.db.insert('attendance_reports', report)
+    return report
+  }
+
+  async getAttendanceReport(organizationId: string, reservationId: string): Promise<AttendanceReport | null> {
+    await this.requireReservation(reservationId, organizationId)
+    return await this.db.findOne('attendance_reports', { organizationId, reservationId }) as AttendanceReport | null
   }
 
   async cancelReservation(id: string, organizationId: string, reason?: string): Promise<LectureReservation> {
