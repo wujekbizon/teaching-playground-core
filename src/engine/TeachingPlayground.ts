@@ -3,7 +3,7 @@ import { RealTimeCommunicationSystem } from '../systems/comms/RealTimeCommunicat
 import { DataManagementSystem } from '../systems/data/DataManagementSystem'
 import { EventManagementSystem } from '../systems/event/EventManagementSystem'
 import { RoomManagementSystem } from '../systems/room/RoomManagementSystem'
-import { Lecture, LectureReservation, ReservationFilter } from '../interfaces/event.interface'
+import { AttendanceReport, AttendanceSnapshot, CaptureAttendanceSnapshotOptions, Lecture, LectureReservation, RecordAttendanceEventOptions, ReservationAcademicPath, ReservationFilter } from '../interfaces/event.interface'
 import { SystemError } from '../interfaces'
 import { User, TeacherProfile } from '../interfaces/user.interface'
 import { RoomFeatures } from '../interfaces/room.interface'
@@ -96,7 +96,7 @@ export default class TeachingPlayground {
 
   async scheduleReservation(options: {
     roomId: string; name: string; startsAt: string; endsAt: string; timezone: string;
-    capacity: number; description?: string
+    capacity: number; description?: string; academicPath?: ReservationAcademicPath
   }): Promise<LectureReservation> {
     const organizationId = this.requireOrganization()
     return this.eventSystem.scheduleReservation({
@@ -120,13 +120,30 @@ export default class TeachingPlayground {
   }
 
   async updateReservation(lectureId: string, updates: {
-    name?: string; description?: string; teacherId?: string; capacity?: number; timezone?: string
+    name?: string; description?: string; teacherId?: string; capacity?: number; timezone?: string; academicPath?: ReservationAcademicPath
   }) {
     return this.eventSystem.updateReservation(lectureId, this.requireOrganization(), updates)
   }
 
   async cancelReservation(lectureId: string, reason?: string) {
     return this.eventSystem.cancelReservation(lectureId, this.requireOrganization(), reason)
+  }
+
+
+  async recordAttendanceEvent(options: Omit<RecordAttendanceEventOptions, 'organizationId'>) {
+    return this.eventSystem.recordAttendanceEvent({ ...options, organizationId: this.requireOrganization() })
+  }
+
+  async captureAttendanceSnapshot(options: Omit<CaptureAttendanceSnapshotOptions, 'organizationId'>): Promise<AttendanceSnapshot> {
+    return this.eventSystem.captureAttendanceSnapshot({ ...options, organizationId: this.requireOrganization() })
+  }
+
+  async finalizeAttendanceReport(reservationId: string): Promise<AttendanceReport> {
+    return this.eventSystem.finalizeAttendanceReport(this.requireOrganization(), reservationId)
+  }
+
+  async getAttendanceReport(reservationId: string): Promise<AttendanceReport | null> {
+    return this.eventSystem.getAttendanceReport(this.requireOrganization(), reservationId)
   }
 
   // Enhanced Event Management

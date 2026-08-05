@@ -74,6 +74,40 @@ describe('RoomConnection server signaling contract', () => {
     })
   })
 
+
+  it('passes SDK launch claims to reservation-backed host admission', async () => {
+    await comms.shutdown()
+    if (server.listening) await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+    server = createServer()
+    let receivedClaims: unknown
+    comms = new RealTimeCommunicationSystem({
+      requireAuthentication: true,
+      requireLaunchClaims: true,
+      identityProvider: ({ auth }) => ({
+        id: String(auth.token), username: String(auth.token), organizationId: 'school-a', role: 'student', status: 'online',
+      }),
+      launchClaimVerifier: ({ claims }) => { receivedClaims = claims; return claims as any },
+    })
+    comms.initialize(server)
+    await new Promise<void>(resolve => server.listen(0, resolve))
+    const { port } = server.address() as AddressInfo
+    const roomId = 'launch-room'
+    comms.registerLecture('lecture-1', roomId, 'open', 2, 'school-a')
+    const launchClaims = {
+      provider: 'wolfmed', allowed: true, organizationId: 'school-a', reservationId: 'lecture-1', roomId,
+      userId: 'student-1', expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }
+    teacher = new RoomConnection(roomId, {
+      id: 'student-1', username: 'student-1', organizationId: 'school-a', role: 'student', status: 'online',
+    }, `http://127.0.0.1:${port}`, { auth: { token: 'student-1' }, reservationId: 'lecture-1', launchClaims })
+
+    const joined = new Promise<void>(resolve => teacher!.once('connected', () => resolve()))
+    teacher.connect()
+    await joined
+
+    expect(receivedClaims).toEqual(launchClaims)
+  })
+
   it('re-emits room admission errors to SDK consumers', async () => {
     const { port } = server.address() as AddressInfo
     const roomId = 'closed-room'

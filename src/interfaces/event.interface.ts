@@ -61,6 +61,68 @@ export interface Lecture {
 
 export type ReservationStatus = 'scheduled' | 'open' | 'in-progress' | 'completed' | 'cancelled'
 
+export interface ExternalReference {
+  provider: string
+  type: string
+  id: string
+  url?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface AcademicEntity {
+  id: string
+  organizationId: string
+  name: string
+  externalRef?: ExternalReference
+}
+
+export interface Organization extends Omit<AcademicEntity, 'organizationId'> {
+  timezone?: string
+}
+
+export interface AcademicProgram extends AcademicEntity {}
+
+export interface Curriculum extends AcademicEntity {
+  programId: string
+  version?: string
+}
+
+export interface AcademicTerm extends AcademicEntity {
+  programId: string
+  curriculumId: string
+  startsAt: string
+  endsAt: string
+  timezone: string
+}
+
+export interface Course extends AcademicEntity {
+  programId: string
+  curriculumId: string
+}
+
+export interface Subject extends AcademicEntity {
+  programId: string
+  curriculumId: string
+  courseId: string
+}
+
+export interface Cohort extends AcademicEntity {
+  programId: string
+  curriculumId: string
+  termId: string
+  courseId: string
+}
+
+export interface ReservationAcademicPath {
+  programId: string
+  curriculumId: string
+  termId: string
+  courseId: string
+  subjectId: string
+  cohortId: string
+  externalRef?: ExternalReference
+}
+
 export interface LectureReservation extends Omit<Lecture, 'status'> {
   organizationId: string
   startsAt: string
@@ -68,6 +130,83 @@ export interface LectureReservation extends Omit<Lecture, 'status'> {
   timezone: string
   capacity: number
   status: ReservationStatus
+  academicPath?: ReservationAcademicPath
+}
+
+
+export type AttendanceEventType = 'joined' | 'left' | 'present' | 'snapshot'
+
+export interface AttendanceParticipantRef {
+  userId: string
+  role: 'teacher' | 'student' | 'admin'
+  displayName?: string
+}
+
+export interface AttendanceEvent {
+  id: string
+  organizationId: string
+  reservationId: string
+  type: AttendanceEventType
+  userId: string
+  role: AttendanceParticipantRef['role']
+  occurredAt: string
+  capturedBy?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface AttendanceSnapshot {
+  id: string
+  organizationId: string
+  reservationId: string
+  capturedBy: string
+  capturedAt: string
+  participants: AttendanceParticipantRef[]
+}
+
+export interface AttendanceReportParticipant {
+  userId: string
+  role: AttendanceParticipantRef['role']
+  firstSeenAt: string
+  lastSeenAt: string
+  eventCount: number
+  snapshotCount: number
+}
+
+export interface AttendanceReport {
+  id: string
+  organizationId: string
+  reservationId: string
+  finalizedAt: string
+  lectureStartsAt: string
+  lectureEndsAt: string
+  participants: AttendanceReportParticipant[]
+  totals: {
+    participants: number
+    students: number
+    teachers: number
+    admins: number
+    events: number
+    snapshots: number
+  }
+}
+
+export interface RecordAttendanceEventOptions {
+  organizationId: string
+  reservationId: string
+  type: AttendanceEventType
+  userId: string
+  role: AttendanceParticipantRef['role']
+  occurredAt?: string
+  capturedBy?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface CaptureAttendanceSnapshotOptions {
+  organizationId: string
+  reservationId: string
+  capturedBy: string
+  capturedAt?: string
+  participants: AttendanceParticipantRef[]
 }
 
 export interface ScheduleLectureOptions {
@@ -81,6 +220,7 @@ export interface ScheduleLectureOptions {
   timezone: string
   capacity: number
   description?: string
+  academicPath?: ReservationAcademicPath
 }
 
 export interface ReservationFilter {
@@ -90,4 +230,10 @@ export interface ReservationFilter {
   status?: ReservationStatus
   from?: string
   to?: string
+  programId?: string
+  curriculumId?: string
+  termId?: string
+  courseId?: string
+  subjectId?: string
+  cohortId?: string
 }

@@ -1,10 +1,10 @@
-# Teaching Playground Core
+# Wolfmed Classroom
 
-A TypeScript package for building realtime virtual classrooms with Socket.IO,
+A TypeScript package powering Wolfmed Classroom realtime virtual classrooms with Socket.IO,
 WebRTC signaling, organization-scoped room scheduling, reservation-aware
 admission, and a diagnostic classroom harness.
 
-Teaching Playground Core is designed to be embedded by a host school portal or
+Wolfmed Classroom is designed to be embedded by a host school portal or
 training platform. The host owns authentication, persistent production storage,
 and deployment infrastructure; this package provides the classroom domain,
 realtime coordination, SDK client, and development tooling needed to validate
@@ -55,15 +55,17 @@ multi-room live instruction.
 ### Rooms and reservations
 
 - Organization-owned rooms with capacity, status, and media features.
-- Reservation model with `startsAt`, `endsAt`, timezone, capacity, teacher, and
-  lifecycle status.
+- Reservation model with `startsAt`, `endsAt`, timezone, capacity, teacher,
+  lifecycle status, and an optional normalized academic path.
 - Availability search scoped by organization, capacity, status, and interval.
 - Serialized overlap checks for the bundled single-process adapter.
 - Configurable room turnover gap, defaulting to 15 minutes between cohorts.
 - Scheduler transitions for `scheduled → open → in-progress → completed` with
   early-admission and completion-grace windows.
-- Reservation-aware WebSocket admission enforcing organization, reservation ID,
-  lifecycle window, and capacity.
+- Reservation-aware WebSocket admission enforcing trusted host launch claims,
+  organization, reservation ID, lifecycle window, and capacity.
+- Attendance foundation for durable attendance events, teacher-triggered
+  snapshots, and finalized reports for completed reservations.
 
 ### Diagnostics and validation
 
@@ -139,6 +141,46 @@ sequenceDiagram
   Comms-->>Client: room_state or join_room_error
   Worker->>Comms: clearRoom + unregister after completion grace
 ```
+
+
+
+
+### Attendance foundation
+
+Phase 2E.2 adds durable attendance primitives under reservation scope. Hosts can
+record attendance events, capture teacher-triggered snapshots of current
+participants, and finalize an idempotent attendance report after a reservation
+is completed. Attendance mutations verify the reservation belongs to the active
+organization, reject invalid timestamps and duplicate snapshot participants, and
+only finalize reports for completed reservations.
+
+### Host-owned launch claims
+
+Phase 2E.1 keeps commercial and enrollment decisions in the host application.
+When `requireLaunchClaims` is enabled, reservation-backed joins must provide a
+host-verifiable launch decision. Configure `launchClaimVerifier` to validate the
+host's signed or opaque token and return normalized claims with `allowed: true`,
+`organizationId`, `reservationId`, `roomId`, `userId`, and optional `role`,
+`notBefore`, and `expiresAt` fields. The engine does not call payment or
+enrollment services; it only verifies that trusted host claims match the
+Socket.IO identity and then applies runtime checks for reservation identity,
+organization, lifecycle status, capacity, and room cleanup state.
+
+### Normalized academic model
+
+Phase 2E uses a host-agnostic academic hierarchy for scheduling:
+`Organization → AcademicProgram → Curriculum → AcademicTerm → Course → Subject → Cohort → LectureReservation`.
+Host applications such as Wolfmed Klasa keep accounts, payments, commercial
+products, exams, and materials outside the engine, then map their records into
+these stable IDs when creating reservations. Schools with different curricula
+must normalize those structures into this model before calling the scheduling
+API; plugin-based reshaping is intentionally deferred until real onboarding
+proves the model too rigid.
+
+Reservations can include `academicPath` with `programId`, `curriculumId`,
+`termId`, `courseId`, `subjectId`, `cohortId`, and an optional neutral
+`externalRef` back to the host record. `listReservations` accepts these IDs as
+filters alongside organization, room, teacher, status, and date range filters.
 
 Key scheduling rules:
 
