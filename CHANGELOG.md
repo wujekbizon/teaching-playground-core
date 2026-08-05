@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.9.1] - 2026-08-05
+
+### Fixed
+- Returned JSON error responses for development API routes when the server is running without `DEV_AUTH_ENABLED=true`, preventing the harness from trying to parse the plain-text server banner as JSON.
+- Made the harness request helper report non-JSON API responses with an actionable setup hint instead of surfacing a raw JSON parse error.
+
 ## [2.9.0] - 2026-08-05
 
 ### Added

@@ -10,9 +10,18 @@ const request = async <T,>(serverUrl: string, path: string, init?: RequestInit):
     ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   })
-  const body = await response.json()
-  if (!response.ok) throw new Error(body.message ?? `Request failed (${response.status})`)
-  return body
+  const contentType = response.headers.get('content-type') ?? ''
+  const body = contentType.includes('application/json') ? await response.json() : await response.text()
+  if (!response.ok) {
+    const message = typeof body === 'object' && body && 'message' in body
+      ? String(body.message)
+      : `Request failed (${response.status})${typeof body === 'string' && body ? `: ${body}` : ''}`
+    throw new Error(message)
+  }
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected JSON from ${path}, but received ${contentType || 'an unknown content type'}. Is the DEV_AUTH_ENABLED=true server running?`)
+  }
+  return body as T
 }
 
 export function ManagementViews({ view, setView, serverUrl, onJoinReservation }: {

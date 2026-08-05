@@ -118,7 +118,14 @@ export async function startWebSocketServer(port: number = 3001) {
         res.end(JSON.stringify(body))
       }
       const handleApi = async () => {
-        if (!scheduling || !req.url?.startsWith('/api/')) return false
+        if (!req.url?.startsWith('/api/')) return false
+        if (!scheduling) {
+          respond(503, {
+            code: 'DEV_API_DISABLED',
+            message: 'Development API routes require DEV_AUTH_ENABLED=true on the server',
+          })
+          return true
+        }
         const url = new URL(req.url, 'http://localhost')
         if (url.pathname === '/api/turn' && req.method === 'GET') respond(200, buildTurnConfiguration())
         else if (url.pathname === '/api/rooms' && req.method === 'GET') respond(200, await scheduling.listRooms())
