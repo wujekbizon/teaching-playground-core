@@ -62,8 +62,8 @@ multi-room live instruction.
 - Configurable room turnover gap, defaulting to 15 minutes between cohorts.
 - Scheduler transitions for `scheduled → open → in-progress → completed` with
   early-admission and completion-grace windows.
-- Reservation-aware WebSocket admission enforcing organization, reservation ID,
-  lifecycle window, and capacity.
+- Reservation-aware WebSocket admission enforcing trusted host launch claims,
+  organization, reservation ID, lifecycle window, and capacity.
 
 ### Diagnostics and validation
 
@@ -140,6 +140,19 @@ sequenceDiagram
   Worker->>Comms: clearRoom + unregister after completion grace
 ```
 
+
+
+### Host-owned launch claims
+
+Phase 2E.1 keeps commercial and enrollment decisions in the host application.
+When `requireLaunchClaims` is enabled, reservation-backed joins must provide a
+host-verifiable launch decision. Configure `launchClaimVerifier` to validate the
+host's signed or opaque token and return normalized claims with `allowed: true`,
+`organizationId`, `reservationId`, `roomId`, `userId`, and optional `role`,
+`notBefore`, and `expiresAt` fields. The engine does not call payment or
+enrollment services; it only verifies that trusted host claims match the
+Socket.IO identity and then applies runtime checks for reservation identity,
+organization, lifecycle status, capacity, and room cleanup state.
 
 ### Normalized academic model
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.9.0] - 2026-08-05
+
+### Added
+- Added Phase 2E.1 host-owned launch claim interfaces and verifier configuration for reservation-backed room admission.
+- Added runtime enforcement that verified launch claims match the authenticated user, organization, room, reservation, optional role, and validity window before capacity/lifecycle admission succeeds.
+- Added SDK `RoomConnection` support for passing host launch claims with reservation joins.
+- Added admission tests for missing, mismatched, expired, and accepted host launch claims.
+
+### Changed
+- Bumped package version to 2.9.0 for the Phase 2E.1 launch/admission contract milestone.
+
 ## [2.8.0] - 2026-08-05
 
 ### Added

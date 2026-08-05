@@ -84,6 +84,7 @@ export interface RoomConnectionOptions {
   auth?: Record<string, unknown>
   rtcConfiguration?: RTCConfiguration
   reservationId?: string
+  launchClaims?: unknown
 }
 
 export class RoomConnection extends RoomEventEmitter {
@@ -349,7 +350,7 @@ export class RoomConnection extends RoomEventEmitter {
   private joinRoom() {
     if (!this.socket || !this.isConnected) return
     // v1.1.0: Send full user object
-    this.socket.emit('join_room', { roomId: this.roomId, reservationId: this.options.reservationId, user: this.user })
+    this.socket.emit('join_room', { roomId: this.roomId, reservationId: this.options.reservationId, launchClaims: this.options.launchClaims, user: this.user })
   }
 
   disconnect() {
